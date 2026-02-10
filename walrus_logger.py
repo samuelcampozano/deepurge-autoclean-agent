@@ -137,7 +137,7 @@ class WalrusLogger:
         Upload data to Walrus using Publisher pattern
         
         This uses the HTTP REST API of Walrus:
-        PUT /v1/store?epochs=N
+        PUT /v1/blobs?epochs=N
         
         Args:
             data: Dictionary to upload as JSON
@@ -153,8 +153,8 @@ class WalrusLogger:
             json_data = json.dumps(data, indent=2)
             epochs = epochs or self.epochs
             
-            # Walrus Publisher API endpoint
-            url = f"{self.publisher_url}/v1/store?epochs={epochs}"
+            # Walrus Publisher API endpoint (correct endpoint is /v1/blobs)
+            url = f"{self.publisher_url}/v1/blobs?epochs={epochs}"
             
             response = requests.put(
                 url,
@@ -312,7 +312,7 @@ class WalrusLogger:
             Retrieved data as dictionary, or None if failed
         """
         try:
-            url = f"{self.aggregator_url}/v1/{blob_id}"
+            url = f"{self.aggregator_url}/v1/blobs/{blob_id}"
             
             response = requests.get(url, timeout=30)
             
@@ -336,7 +336,7 @@ class WalrusLogger:
         Returns:
             Full URL to retrieve the blob
         """
-        return f"{self.aggregator_url}/v1/{blob_id}"
+        return f"{self.aggregator_url}/v1/blobs/{blob_id}"
     
     def get_session_stats(self) -> Dict[str, Any]:
         """Get statistics for the current session"""
