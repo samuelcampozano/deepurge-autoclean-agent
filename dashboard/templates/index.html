@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Deepurge Dashboard – Walrus Blob Viewer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+<!-- Overlay for closing sidebar -->
+<div class="sidebar-overlay" id="overlay"></div>
+
+<!-- ─── Sidebar ───────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+        <button class="sidebar-close" id="sidebarClose" title="Close menu">✕</button>
+        <span class="brand-icon">🤖</span>
+        <h1>Deepurge</h1>
+        <span class="brand-sub">AutoClean Agent</span>
+    </div>
+
+    <nav class="sidebar-nav">
+        <a href="#" class="nav-item active" data-view="control">
+            <span class="nav-icon">🎮</span> Control Panel
+        </a>
+        <a href="#" class="nav-item" data-view="dashboard">
+            <span class="nav-icon">📊</span> Dashboard
+        </a>
+        <a href="#" class="nav-item" data-view="explorer">
+            <span class="nav-icon">🔍</span> Blob Explorer
+        </a>
+        <a href="#" class="nav-item" data-view="history">
+            <span class="nav-icon">📜</span> Upload History
+        </a>
+        <a href="#" class="nav-item" data-view="live">
+            <span class="nav-icon">⚡</span> Live Feed
+        </a>
+    </nav>
+
+    <div class="sidebar-footer">
+        <div class="walrus-badge">
+            <span>🦭</span> Walrus Testnet
+        </div>
+        <p class="credit">x OpenClaw Agent Hackathon</p>
+    </div>
+</aside>
+
+<!-- ─── Main Content ──────────────────────────────────────── -->
+<main class="main" id="main">
+
+    <!-- Header -->
+    <header class="topbar">
+        <button class="menu-toggle" id="menuToggle">☰</button>
+        <div class="topbar-title">
+            <h2 id="viewTitle">🎮 Control Panel</h2>
+        </div>
+        <div class="topbar-actions">
+            <span class="agent-indicator" id="agentIndicator">
+                <span class="indicator-dot" id="indicatorDot"></span>
+                <span id="indicatorText">Agent Stopped</span>
+            </span>
+            <button class="btn btn-sm btn-outline" id="refreshBtn" title="Refresh data">🔄 Refresh</button>
+        </div>
+    </header>
+
+    <!-- ═══════════ VIEW: Control Panel ═════════ -->
+    <section class="view active" id="view-control">
+
+        <!-- Agent status card -->
+        <div class="panel full-width agent-status-panel" id="agentStatusPanel">
+            <div class="agent-status-row">
+                <div class="agent-status-info">
+                    <h3 class="panel-title">🤖 Agent Status</h3>
+                    <p class="agent-status-text" id="agentStatusText">Agent is <strong>stopped</strong></p>
+                    <p class="agent-pid" id="agentPidText"></p>
+                </div>
+                <div class="agent-status-actions">
+                    <button class="btn btn-success" id="btnStartAgent">▶ Start Agent</button>
+                    <button class="btn btn-danger" id="btnStopAgent" disabled>⏹ Stop Agent</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Demo generator -->
+        <div class="panel full-width">
+            <h3 class="panel-title">🎬 Demo File Generator</h3>
+            <p class="panel-desc">Create test files in your Downloads folder so the agent has something to organize and upload to Walrus.</p>
+            <div class="demo-controls">
+                <label class="demo-label">Number of files:</label>
+                <input type="number" id="demoCount" class="input input-sm" value="50" min="1" max="500" />
+                <button class="btn btn-primary" id="btnGenerateDemo">📦 Generate Demo Files</button>
+            </div>
+        </div>
+
+        <!-- Live Console -->
+        <div class="panel full-width">
+            <h3 class="panel-title">📟 Console Output</h3>
+            <p class="panel-desc">Real-time output from the agent and demo generator.</p>
+            <div class="console" id="consoleOutput">
+                <div class="console-line sys">[SYS] Dashboard ready. Start the agent to begin.</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ VIEW: Dashboard ═══════════ -->
+    <section class="view" id="view-dashboard">
+
+        <!-- Stat Cards -->
+        <div class="stat-grid">
+            <div class="stat-card accent-blue">
+                <div class="stat-icon">📁</div>
+                <div class="stat-body">
+                    <span class="stat-value" id="statFiles">–</span>
+                    <span class="stat-label">Files Processed</span>
+                </div>
+            </div>
+            <div class="stat-card accent-purple">
+                <div class="stat-icon">🦭</div>
+                <div class="stat-body">
+                    <span class="stat-value" id="statUploads">–</span>
+                    <span class="stat-label">Walrus Uploads</span>
+                </div>
+            </div>
+            <div class="stat-card accent-green">
+                <div class="stat-icon">💾</div>
+                <div class="stat-body">
+                    <span class="stat-value" id="statSize">–</span>
+                    <span class="stat-label">Data Processed</span>
+                </div>
+            </div>
+            <div class="stat-card accent-orange">
+                <div class="stat-icon">📂</div>
+                <div class="stat-body">
+                    <span class="stat-value" id="statCategories">–</span>
+                    <span class="stat-label">Categories</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts row -->
+        <div class="panel-grid">
+            <div class="panel">
+                <h3 class="panel-title">📊 Category Breakdown</h3>
+                <div class="chart-container" id="categoryChart"></div>
+            </div>
+            <div class="panel">
+                <h3 class="panel-title">⚡ Recent Activity</h3>
+                <div class="activity-list" id="recentActivity"></div>
+            </div>
+        </div>
+
+        <!-- Walrus uploads table -->
+        <div class="panel full-width">
+            <h3 class="panel-title">🦭 Recent Walrus Uploads</h3>
+            <div class="table-wrap">
+                <table class="data-table" id="uploadsTable">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Content Type</th>
+                            <th>Actions</th>
+                            <th>Blob ID</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ VIEW: Blob Explorer ═══════════ -->
+    <section class="view" id="view-explorer">
+        <div class="panel full-width">
+            <h3 class="panel-title">🔍 Walrus Blob Explorer</h3>
+            <p class="panel-desc">Enter a Blob ID or full aggregator URL to fetch and visualize the data stored on Walrus.</p>
+
+            <div class="blob-input-row">
+                <input type="text" id="blobInput" class="input" placeholder="Paste Blob ID or full URL…"
+                       value="" />
+                <button class="btn btn-primary" id="fetchBlobBtn">Fetch Blob</button>
+            </div>
+        </div>
+
+        <!-- Blob result -->
+        <div class="panel full-width hidden" id="blobResultPanel">
+            <div class="blob-header">
+                <h3 class="panel-title" id="blobResultTitle">Blob Data</h3>
+                <div class="blob-meta" id="blobMeta"></div>
+            </div>
+
+            <!-- Stats strip for batch blobs -->
+            <div class="stat-grid small hidden" id="blobStatStrip"></div>
+
+            <!-- Blob actions table -->
+            <div class="table-wrap hidden" id="blobTableWrap">
+                <table class="data-table" id="blobTable">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Timestamp</th>
+                            <th>Action</th>
+                            <th>File</th>
+                            <th>Category</th>
+                            <th>Size</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <!-- Raw JSON toggle -->
+            <details class="raw-toggle">
+                <summary>View Raw JSON</summary>
+                <pre class="raw-json" id="blobRawJson"></pre>
+            </details>
+        </div>
+    </section>
+
+    <!-- ═══════════ VIEW: History ═══════════ -->
+    <section class="view" id="view-history">
+        <div class="panel full-width">
+            <h3 class="panel-title">📜 All Walrus Upload History</h3>
+            <p class="panel-desc">Every batch, report and session summary that the agent has uploaded. Click a row to explore the blob.</p>
+            <div class="table-wrap">
+                <table class="data-table" id="historyTable">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Type</th>
+                            <th>Actions</th>
+                            <th>Blob ID</th>
+                            <th>Explore</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ VIEW: Live Feed ═══════════ -->
+    <section class="view" id="view-live">
+        <div class="panel full-width">
+            <h3 class="panel-title">⚡ Live Action Feed</h3>
+            <p class="panel-desc">Auto-refreshes every 10 seconds from the local database.</p>
+            <div class="live-controls">
+                <button class="btn btn-sm btn-primary" id="liveToggle">▶ Start Live</button>
+                <span class="live-status" id="liveStatus">Paused</span>
+            </div>
+            <div class="activity-list large" id="liveFeed"></div>
+        </div>
+    </section>
+
+</main>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
