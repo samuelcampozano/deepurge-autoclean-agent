@@ -1,0 +1,41 @@
+# ════════════════════════════════════════════════════════
+#  Deepurge – Full-Stack Dockerfile
+#  Dashboard + Agent in one image for portability
+# ════════════════════════════════════════════════════════
+FROM python:3.11-slim
+
+LABEL maintainer="Samuel Campozano Lopez"
+LABEL description="Deepurge AutoClean Agent + Dashboard"
+
+WORKDIR /app
+
+# Install all Python dependencies
+COPY requirements.txt ./requirements-agent.txt
+COPY dashboard/requirements.txt ./requirements-dashboard.txt
+RUN pip install --no-cache-dir \
+    -r requirements-agent.txt \
+    -r requirements-dashboard.txt
+
+# Copy the entire project
+COPY agent.py classifier.py database.py walrus_logger.py \
+     demo_generator.py config.json config.docker.json ./
+COPY dashboard/ ./dashboard/
+
+# Use the docker-specific config (paths: /data/Downloads, /data/Organized)
+RUN cp config.docker.json config.json
+
+# Create the folders the agent needs (overridable via volumes)
+RUN mkdir -p /data/Downloads /data/Organized
+
+# Expose dashboard port
+EXPOSE 5050
+
+# Environment
+ENV FLASK_DEBUG=0
+ENV PORT=5050
+ENV PYTHONUNBUFFERED=1
+ENV WALRUS_AGGREGATOR=https://aggregator.walrus-testnet.walrus.space
+
+# The dashboard launches the agent from its Control Panel UI
+WORKDIR /app/dashboard
+CMD ["python", "app.py"]

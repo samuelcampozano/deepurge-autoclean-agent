@@ -1,0 +1,19 @@
+# ════════════════════════════════════════════════════════
+#  .dockerignore for Deepurge
+# ════════════════════════════════════════════════════════
+__pycache__
+*.pyc
+*.pyo
+.git
+.gitignore
+*.md
+*.bat
+session_backup.json
+agent.log
+.env
+venv/
+.venv/
+node_modules/
+demo-files/
+blob_history.json
+actions.db

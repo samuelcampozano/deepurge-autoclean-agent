@@ -1,0 +1,29 @@
+# ════════════════════════════════════════════════════════
+#  Deepurge – Docker Compose
+#  Full-stack: Dashboard + Agent in one container
+#  Run:  docker-compose up --build
+# ════════════════════════════════════════════════════════
+
+services:
+  deepurge:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: deepurge
+    ports:
+      - "5050:5050"
+    volumes:
+      # Mount your REAL Downloads folder so the agent works on actual files
+      - ${DEEPURGE_WATCH_FOLDER:-~/Downloads}:/data/Downloads
+      # Organized files go here on your PC
+      - ${DEEPURGE_ORGANIZED_FOLDER:-~/Downloads/Organized}:/data/Organized
+      # Persist database & blob history between restarts
+      - deepurge-data:/app/data
+    environment:
+      - WALRUS_AGGREGATOR=https://aggregator.walrus-testnet.walrus.space
+      - PORT=5050
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+
+volumes:
+  deepurge-data:
