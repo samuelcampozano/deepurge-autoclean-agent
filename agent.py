@@ -85,6 +85,9 @@ class DeepurgeAgent(FileSystemEventHandler):
         else:
             self.walrus = WalrusLoggerDemo(network='testnet')
         
+        # Blob history file for dashboard integration
+        self.blob_history_path = Path("blob_history.json")
+        
         # Statistics
         self.stats = {
             "files_processed": 0,
@@ -405,8 +408,11 @@ class DeepurgeAgent(FileSystemEventHandler):
                 )
                 self.pending_upload_count = 0
                 
+                self._save_blob_to_history(blob_id, "action_batch", len(pending))
+                
                 print(f"{Fore.MAGENTA}📤 Uploaded {len(pending)} actions to Walrus{Style.RESET_ALL}")
                 print(f"   {Fore.MAGENTA}Blob ID:{Style.RESET_ALL} {blob_id}")
+                print(f"   {Fore.MAGENTA}View URL:{Style.RESET_ALL} {self.walrus.get_walrus_url(blob_id)}")
                 
                 return blob_id
             
@@ -415,6 +421,27 @@ class DeepurgeAgent(FileSystemEventHandler):
         
         return None
     
+    def _save_blob_to_history(self, blob_id: str, content_type: str, action_count: int = 0):
+        """Append a blob ID to blob_history.json for dashboard auto-discovery"""
+        try:
+            history = {"blobs": []}
+            if self.blob_history_path.exists():
+                with open(self.blob_history_path, 'r') as f:
+                    history = json.load(f)
+            
+            history["blobs"].append({
+                "blob_id": blob_id,
+                "url": self.walrus.get_walrus_url(blob_id),
+                "content_type": content_type,
+                "action_count": action_count,
+                "timestamp": datetime.utcnow().isoformat() + "Z"
+            })
+            
+            with open(self.blob_history_path, 'w') as f:
+                json.dump(history, f, indent=2)
+        except Exception as e:
+            self.logger.warning(f"Failed to save blob history: {e}")
+
     def _get_category_counts(self, actions: list) -> dict:
         """Get category counts from actions"""
         counts = {}
@@ -481,6 +508,8 @@ class DeepurgeAgent(FileSystemEventHandler):
             print(f"   {Fore.CYAN}Date:{Style.RESET_ALL} {today}")
             print(f"   {Fore.CYAN}Files:{Style.RESET_ALL} {summary['total_files']}")
             print(f"   {Fore.CYAN}Blob ID:{Style.RESET_ALL} {blob_id}")
+            print(f"   {Fore.CYAN}View URL:{Style.RESET_ALL} {self.walrus.get_walrus_url(blob_id)}")
+            self._save_blob_to_history(blob_id, "daily_report", summary['total_files'])
         
         return blob_id
     
@@ -590,6 +619,8 @@ def main():
         blob_id = agent.walrus.upload_session_summary()
         if blob_id:
             print(f"   {Fore.GREEN}✅ Summary Blob ID: {blob_id}{Style.RESET_ALL}")
+            print(f"   {Fore.GREEN}✅ View URL: {agent.walrus.get_walrus_url(blob_id)}{Style.RESET_ALL}")
+            agent._save_blob_to_history(blob_id, "session_summary")
         
         # Save local backup
         agent.walrus.save_local_backup(Path("session_backup.json"))
