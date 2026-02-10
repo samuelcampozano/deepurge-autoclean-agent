@@ -240,6 +240,23 @@ Edit `config.json` to customize the agent:
 
 ## 🦭 Walrus Integration
 
+### Why Walrus Decentralized Storage?
+
+Unlike traditional cloud storage (Google Drive, Dropbox, S3), Walrus on the Sui blockchain provides unique guarantees that make it ideal for file organization audit trails:
+
+| Feature | Traditional Cloud | Walrus on Sui |
+|---------|------------------|---------------|
+| **Immutability** | Files can be modified or deleted by the provider | ✅ Once stored, data can never be altered or deleted |
+| **Censorship Resistance** | Single company controls access | ✅ No single entity can remove your records |
+| **Cryptographic Verification** | Trust the provider's word | ✅ Anyone can verify any record at any time |
+| **Transparency** | Opaque internal systems | ✅ Every blob is publicly auditable on-chain |
+| **Cost Model** | Recurring monthly fees | ✅ Pay once, stored permanently on Sui |
+| **Vendor Lock-in** | Tied to one provider | ✅ Open protocol, accessible from anywhere |
+
+**Real-world value:** Your file organization history becomes a permanent, tamper-proof record — perfect for compliance auditing, digital asset management, or simply proving that a specific file existed and was organized at a specific time.
+
+### Data Format
+
 Every file operation is logged to Walrus decentralized storage:
 
 ```json
