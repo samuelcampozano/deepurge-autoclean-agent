@@ -1,0 +1,606 @@
+"""
+Deepurge AutoClean Agent
+========================
+
+Main autonomous file organization agent that runs on Windows 11.
+Monitors Downloads folder, classifies files, organizes them, and logs to Walrus.
+
+Author: Samuel Campozano Lopez
+Project: Sui Hackathon 2026
+Deadline: February 11, 2026
+
+Features:
+- Real-time file monitoring with Watchdog
+- Automatic file classification by extension
+- Organized folder structure with timestamped files
+- Duplicate detection via SHA256 hash
+- Action logging to SQLite database
+- Walrus blockchain storage integration
+- Daily report generation
+- Error recovery with retry logic
+"""
+
+import os
+import sys
+import json
+import time
+import shutil
+import logging
+from pathlib import Path
+from datetime import datetime
+from typing import Optional
+from logging.handlers import RotatingFileHandler
+
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileMovedEvent
+from colorama import init, Fore, Style
+
+from classifier import FileClassifier, format_file_size
+from database import Database
+from walrus_logger import WalrusLogger, WalrusLoggerDemo
+
+# Initialize colorama for Windows
+init(autoreset=True)
+
+
+class DeepurgeAgent(FileSystemEventHandler):
+    """
+    Autonomous file organization agent
+    
+    Monitors a watch folder, classifies files by type,
+    moves them to organized folders, and logs all actions
+    to both SQLite and Walrus decentralized storage.
+    """
+    
+    def __init__(self, config_path: str = "config.json"):
+        """Initialize the agent with configuration"""
+        self.config = self._load_config(config_path)
+        self.processed_files: set = set()
+        self.pending_upload_count = 0
+        
+        # Setup paths
+        self.watch_folder = Path(self.config['folders']['watch_folder']).expanduser()
+        self.organized_folder = Path(self.config['folders']['organized_folder']).expanduser()
+        
+        # Initialize components
+        self.classifier = FileClassifier(config_path)
+        self.db = Database(self.config['database']['path'])
+        
+        # Setup logging first
+        self._setup_logging()
+        
+        # Initialize Walrus logger
+        walrus_config = self.config.get('walrus', {})
+        if walrus_config.get('enabled', True):
+            try:
+                self.walrus = WalrusLogger(
+                    network=walrus_config.get('network', 'testnet'),
+                    aggregator_url=walrus_config.get('aggregator_url'),
+                    publisher_url=walrus_config.get('publisher_url'),
+                    epochs=walrus_config.get('epochs', 5)
+                )
+            except Exception as e:
+                self.logger.warning(f"Walrus init failed, using demo mode: {e}")
+                self.walrus = WalrusLoggerDemo(network='testnet')
+        else:
+            self.walrus = WalrusLoggerDemo(network='testnet')
+        
+        # Statistics
+        self.stats = {
+            "files_processed": 0,
+            "files_moved": 0,
+            "files_skipped_duplicate": 0,
+            "errors": 0,
+            "start_time": datetime.now()
+        }
+        
+        # Setup folders
+        self._setup_folders()
+        
+        self.logger.info("Deepurge Agent initialized successfully")
+    
+    def _load_config(self, config_path: str) -> dict:
+        """Load configuration from JSON file"""
+        default_config = {
+            "agent_name": "Deepurge AutoClean Agent",
+            "version": "1.0.0",
+            "author": "Samuel Campozano Lopez",
+            "folders": {
+                "watch_folder": "~/Downloads",
+                "organized_folder": "~/Downloads/Organized"
+            },
+            "scan_interval_seconds": 60,
+            "min_file_age_seconds": 5,
+            "categories": {},
+            "ignore_patterns": [".tmp", ".crdownload", ".partial", "~$", ".download"],
+            "walrus": {
+                "enabled": True,
+                "network": "testnet",
+                "upload_batch_size": 100
+            },
+            "database": {
+                "path": "actions.db"
+            },
+            "logging": {
+                "file": "agent.log",
+                "level": "INFO",
+                "max_size_mb": 10,
+                "backup_count": 3
+            },
+            "rename_pattern": "YYYYMMDD_HHMMSS",
+            "check_duplicates": True,
+            "retry_attempts": 3,
+            "retry_delay_seconds": 5
+        }
+        
+        try:
+            with open(config_path, 'r') as f:
+                loaded_config = json.load(f)
+                # Deep merge with defaults
+                for key, value in loaded_config.items():
+                    if isinstance(value, dict) and key in default_config:
+                        default_config[key].update(value)
+                    else:
+                        default_config[key] = value
+        except FileNotFoundError:
+            print(f"{Fore.YELLOW}⚠️ Config not found, using defaults{Style.RESET_ALL}")
+        except json.JSONDecodeError as e:
+            print(f"{Fore.RED}❌ Config parse error: {e}{Style.RESET_ALL}")
+        
+        return default_config
+    
+    def _setup_logging(self):
+        """Setup file and console logging"""
+        log_config = self.config.get('logging', {})
+        
+        self.logger = logging.getLogger('DeepurgeAgent')
+        self.logger.setLevel(getattr(logging, log_config.get('level', 'INFO')))
+        
+        # File handler with rotation
+        file_handler = RotatingFileHandler(
+            log_config.get('file', 'agent.log'),
+            maxBytes=log_config.get('max_size_mb', 10) * 1024 * 1024,
+            backupCount=log_config.get('backup_count', 3)
+        )
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s - %(levelname)s - %(message)s'
+        ))
+        
+        # Console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(logging.Formatter(
+            '%(message)s'
+        ))
+        
+        self.logger.addHandler(file_handler)
+        self.logger.addHandler(console_handler)
+    
+    def _setup_folders(self):
+        """Create all required folders"""
+        print(f"\n{Fore.CYAN}📁 Setting up folders...{Style.RESET_ALL}")
+        
+        # Create watch folder if not exists
+        self.watch_folder.mkdir(parents=True, exist_ok=True)
+        print(f"   📂 Watch: {self.watch_folder}")
+        
+        # Create organized folder structure
+        self.organized_folder.mkdir(parents=True, exist_ok=True)
+        
+        for category in self.classifier.get_all_categories():
+            folder = self.organized_folder / category
+            folder.mkdir(parents=True, exist_ok=True)
+            print(f"   ✓ {folder}")
+        
+        print(f"{Fore.GREEN}   ✅ Folders ready!{Style.RESET_ALL}\n")
+    
+    def _should_ignore(self, file_path: Path) -> bool:
+        """Check if file should be ignored"""
+        file_name = file_path.name.lower()
+        
+        # Ignore patterns from config
+        for pattern in self.config.get('ignore_patterns', []):
+            if pattern.lower() in file_name:
+                return True
+        
+        # Ignore hidden files
+        if file_name.startswith('.'):
+            return True
+        
+        # Ignore directories
+        if file_path.is_dir():
+            return True
+        
+        return False
+    
+    def _is_file_ready(self, file_path: Path) -> bool:
+        """Check if file is ready (not being written)"""
+        try:
+            if not file_path.exists():
+                return False
+            
+            # Check file age
+            min_age = self.config.get('min_file_age_seconds', 5)
+            file_age = time.time() - file_path.stat().st_mtime
+            if file_age < min_age:
+                return False
+            
+            # Try to open file to ensure not locked
+            with open(file_path, 'rb') as f:
+                f.read(1)
+            return True
+            
+        except (PermissionError, IOError, OSError):
+            return False
+    
+    def _generate_new_filename(self, file_path: Path) -> str:
+        """Generate new filename with timestamp pattern"""
+        pattern = self.config.get('rename_pattern', 'YYYYMMDD_HHMMSS')
+        now = datetime.now()
+        
+        timestamp = pattern
+        timestamp = timestamp.replace('YYYY', now.strftime('%Y'))
+        timestamp = timestamp.replace('MM', now.strftime('%m'))
+        timestamp = timestamp.replace('DD', now.strftime('%d'))
+        timestamp = timestamp.replace('HH', now.strftime('%H'))
+        timestamp = timestamp.replace('mm', now.strftime('%M'))
+        timestamp = timestamp.replace('SS', now.strftime('%S'))
+        
+        return f"{timestamp}_{file_path.name}"
+    
+    def _check_duplicate(self, file_hash: str) -> bool:
+        """Check if file with same hash exists"""
+        if not self.config.get('check_duplicates', True):
+            return False
+        return self.db.file_hash_exists(file_hash)
+    
+    def process_file(self, file_path: Path) -> Optional[Path]:
+        """
+        Process a single file: classify, check duplicates, move, log
+        
+        Args:
+            file_path: Path to the file
+            
+        Returns:
+            New path if moved, None otherwise
+        """
+        if self._should_ignore(file_path):
+            return None
+        
+        if str(file_path) in self.processed_files:
+            return None
+        
+        if not self._is_file_ready(file_path):
+            return None
+        
+        retry_attempts = self.config.get('retry_attempts', 3)
+        retry_delay = self.config.get('retry_delay_seconds', 5)
+        
+        for attempt in range(retry_attempts):
+            try:
+                # Analyze file
+                analysis = self.classifier.analyze_file(file_path)
+                category = analysis['category']
+                file_size = analysis['size']
+                file_hash = analysis['hash']
+                
+                # Check for duplicates
+                if file_hash and self._check_duplicate(file_hash):
+                    self.logger.info(f"[SKIP] Skipping duplicate: {file_path.name}")
+                    self.stats['files_skipped_duplicate'] += 1
+                    self.processed_files.add(str(file_path))
+                    
+                    # Log skipped file
+                    self.db.log_action(
+                        action_type="DUPLICATE_SKIPPED",
+                        original_path=str(file_path),
+                        new_path=None,
+                        file_name=file_path.name,
+                        category=category,
+                        file_size=file_size,
+                        file_hash=file_hash
+                    )
+                    return None
+                
+                # Generate destination path
+                new_filename = self._generate_new_filename(file_path)
+                destination_folder = self.organized_folder / category
+                destination_path = destination_folder / new_filename
+                
+                # Handle name conflicts
+                counter = 1
+                while destination_path.exists():
+                    stem = file_path.stem
+                    suffix = file_path.suffix
+                    timestamp = new_filename.rsplit('_', 1)[0]
+                    destination_path = destination_folder / f"{timestamp}_{stem}_{counter}{suffix}"
+                    counter += 1
+                
+                # Move the file
+                shutil.move(str(file_path), str(destination_path))
+                
+                # Update statistics
+                self.processed_files.add(str(file_path))
+                self.stats['files_moved'] += 1
+                self.stats['files_processed'] += 1
+                self.pending_upload_count += 1
+                
+                # Log to database
+                action_id = self.db.log_action(
+                    action_type="MOVED",
+                    original_path=str(file_path),
+                    new_path=str(destination_path),
+                    file_name=file_path.name,
+                    category=category,
+                    file_size=file_size,
+                    file_hash=file_hash
+                )
+                
+                # Log to Walrus (individual or batch)
+                walrus_blob_id = None
+                batch_size = self.config.get('walrus', {}).get('upload_batch_size', 100)
+                
+                if self.pending_upload_count >= batch_size:
+                    walrus_blob_id = self._upload_batch_to_walrus()
+                
+                # Print success message
+                print(f"{Fore.GREEN}✅ Moved:{Style.RESET_ALL} {file_path.name}")
+                print(f"   {Fore.BLUE}Category:{Style.RESET_ALL} {category}")
+                print(f"   {Fore.BLUE}Size:{Style.RESET_ALL} {format_file_size(file_size)}")
+                print(f"   {Fore.BLUE}New name:{Style.RESET_ALL} {new_filename}")
+                if walrus_blob_id:
+                    print(f"   {Fore.MAGENTA}Walrus Batch:{Style.RESET_ALL} {walrus_blob_id}")
+                print()
+                
+                self.logger.info(f"Moved: {file_path.name} -> {category}/{new_filename}")
+                
+                return destination_path
+                
+            except Exception as e:
+                self.logger.error(f"Error processing {file_path.name} (attempt {attempt + 1}): {e}")
+                
+                if attempt < retry_attempts - 1:
+                    time.sleep(retry_delay)
+                else:
+                    self.stats['errors'] += 1
+                    self.db.log_action(
+                        action_type="ERROR",
+                        original_path=str(file_path),
+                        file_name=file_path.name,
+                        category="Unknown",
+                        status="failed",
+                        error_message=str(e)
+                    )
+                    print(f"{Fore.RED}❌ Error: {file_path.name} - {e}{Style.RESET_ALL}")
+        
+        return None
+    
+    def _upload_batch_to_walrus(self) -> Optional[str]:
+        """Upload pending actions to Walrus as a batch"""
+        try:
+            pending = self.db.get_pending_actions(limit=100)
+            if not pending:
+                return None
+            
+            # Create batch entry
+            batch_data = {
+                "batch_type": "action_log",
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "action_count": len(pending),
+                "actions": pending,
+                "agent": "Deepurge-AutoClean-Agent-v1.0",
+                "author": "Samuel Campozano Lopez"
+            }
+            
+            blob_id = self.walrus.upload_to_walrus(batch_data)
+            
+            if blob_id:
+                # Mark actions as uploaded
+                action_ids = [a['id'] for a in pending]
+                self.db.mark_actions_uploaded(action_ids, blob_id)
+                self.db.log_walrus_upload(
+                    blob_id=blob_id,
+                    content_type="action_batch",
+                    action_count=len(pending),
+                    data_summary={"categories": self._get_category_counts(pending)}
+                )
+                self.pending_upload_count = 0
+                
+                print(f"{Fore.MAGENTA}📤 Uploaded {len(pending)} actions to Walrus{Style.RESET_ALL}")
+                print(f"   {Fore.MAGENTA}Blob ID:{Style.RESET_ALL} {blob_id}")
+                
+                return blob_id
+            
+        except Exception as e:
+            self.logger.error(f"Walrus batch upload failed: {e}")
+        
+        return None
+    
+    def _get_category_counts(self, actions: list) -> dict:
+        """Get category counts from actions"""
+        counts = {}
+        for action in actions:
+            cat = action.get('category', 'Unknown')
+            counts[cat] = counts.get(cat, 0) + 1
+        return counts
+    
+    def on_created(self, event):
+        """Handle file creation events"""
+        if isinstance(event, FileCreatedEvent):
+            file_path = Path(event.src_path)
+            min_age = self.config.get('min_file_age_seconds', 5)
+            time.sleep(min_age)
+            self.process_file(file_path)
+    
+    def on_moved(self, event):
+        """Handle file move events (browser completing download)"""
+        if isinstance(event, FileMovedEvent):
+            file_path = Path(event.dest_path)
+            min_age = self.config.get('min_file_age_seconds', 5)
+            time.sleep(min_age)
+            self.process_file(file_path)
+    
+    def scan_existing_files(self):
+        """Scan and process existing files"""
+        print(f"{Fore.YELLOW}🔍 Scanning existing files...{Style.RESET_ALL}\n")
+        
+        files = list(self.watch_folder.iterdir())
+        processed = 0
+        
+        for file_path in files:
+            if file_path.is_file() and not self._should_ignore(file_path):
+                result = self.process_file(file_path)
+                if result:
+                    processed += 1
+        
+        # Upload any remaining pending actions
+        if self.pending_upload_count > 0:
+            self._upload_batch_to_walrus()
+        
+        print(f"{Fore.GREEN}✅ Processed {processed} existing files{Style.RESET_ALL}\n")
+        return processed
+    
+    def create_daily_report(self):
+        """Create and upload daily report to Walrus"""
+        today = datetime.utcnow().strftime('%Y-%m-%d')
+        summary = self.db.get_daily_summary(today)
+        
+        if summary['total_files'] == 0:
+            return None
+        
+        blob_id = self.walrus.create_daily_report(today, summary)
+        
+        if blob_id:
+            self.db.save_daily_report(
+                report_date=today,
+                total_files=summary['total_files'],
+                categories_summary=summary['categories'],
+                walrus_blob_id=blob_id
+            )
+            
+            print(f"{Fore.CYAN}📊 Daily report uploaded to Walrus{Style.RESET_ALL}")
+            print(f"   {Fore.CYAN}Date:{Style.RESET_ALL} {today}")
+            print(f"   {Fore.CYAN}Files:{Style.RESET_ALL} {summary['total_files']}")
+            print(f"   {Fore.CYAN}Blob ID:{Style.RESET_ALL} {blob_id}")
+        
+        return blob_id
+    
+    def print_stats(self):
+        """Print current statistics"""
+        runtime = datetime.now() - self.stats['start_time']
+        db_stats = self.db.get_statistics()
+        
+        print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}📊 DEEPURGE AGENT STATISTICS{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
+        print(f"  Runtime: {runtime}")
+        print(f"  Session Files Moved: {self.stats['files_moved']}")
+        print(f"  Duplicates Skipped: {self.stats['files_skipped_duplicate']}")
+        print(f"  Errors: {self.stats['errors']}")
+        print(f"\n  {Fore.BLUE}All-time Statistics:{Style.RESET_ALL}")
+        print(f"    Total Files Processed: {db_stats['total_files_processed']}")
+        print(f"    Total Data: {format_file_size(db_stats['total_bytes_processed'])}")
+        print(f"    Walrus Uploads: {db_stats['walrus_uploads']}")
+        print(f"    Today's Files: {db_stats['today_count']}")
+        print(f"\n  {Fore.MAGENTA}Categories:{Style.RESET_ALL}")
+        for cat_stat in db_stats.get('categories', []):
+            print(f"    {cat_stat['category']}: {cat_stat['count']} files ({format_file_size(cat_stat['total_size'] or 0)})")
+        print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}\n")
+
+
+def print_banner():
+    """Print the agent banner"""
+    banner = f"""
+{Fore.CYAN}╔════════════════════════════════════════════════════════════════════╗
+║                                                                      ║
+║   {Fore.WHITE}██████╗ ███████╗███████╗██████╗ ██╗   ██╗██████╗  ██████╗ ███████╗{Fore.CYAN}    ║
+║   {Fore.WHITE}██╔══██╗██╔════╝██╔════╝██╔══██╗██║   ██║██╔══██╗██╔════╝ ██╔════╝{Fore.CYAN}    ║
+║   {Fore.WHITE}██║  ██║█████╗  █████╗  ██████╔╝██║   ██║██████╔╝██║  ███╗█████╗{Fore.CYAN}      ║
+║   {Fore.WHITE}██║  ██║██╔══╝  ██╔══╝  ██╔═══╝ ██║   ██║██╔══██╗██║   ██║██╔══╝{Fore.CYAN}      ║
+║   {Fore.WHITE}██████╔╝███████╗███████╗██║     ╚██████╔╝██║  ██║╚██████╔╝███████╗{Fore.CYAN}    ║
+║   {Fore.WHITE}╚═════╝ ╚══════╝╚══════╝╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝{Fore.CYAN}    ║
+║                                                                      ║
+║   {Fore.YELLOW}🤖 AUTOCLEAN AGENT FOR SUI HACKATHON{Fore.CYAN}                              ║
+║   {Fore.GREEN}👤 Author: Samuel Campozano Lopez{Fore.CYAN}                                 ║
+║   {Fore.MAGENTA}🦭 Powered by Walrus Decentralized Storage{Fore.CYAN}                        ║
+║                                                                      ║
+╚════════════════════════════════════════════════════════════════════╝{Style.RESET_ALL}
+"""
+    print(banner)
+
+
+def main():
+    """Main entry point"""
+    print_banner()
+    
+    print(f"{Fore.CYAN}🚀 Starting Deepurge AutoClean Agent...{Style.RESET_ALL}")
+    
+    # Create the agent
+    try:
+        agent = DeepurgeAgent("config.json")
+    except Exception as e:
+        print(f"{Fore.RED}❌ Failed to initialize agent: {e}{Style.RESET_ALL}")
+        sys.exit(1)
+    
+    print(f"   {Fore.BLUE}Watch Folder:{Style.RESET_ALL} {agent.watch_folder}")
+    print(f"   {Fore.BLUE}Organized Folder:{Style.RESET_ALL} {agent.organized_folder}")
+    print(f"   {Fore.BLUE}Walrus Network:{Style.RESET_ALL} {agent.walrus.network}")
+    print()
+    
+    # Verify watch folder exists
+    if not agent.watch_folder.exists():
+        print(f"{Fore.RED}❌ Watch folder not found: {agent.watch_folder}{Style.RESET_ALL}")
+        sys.exit(1)
+    
+    # Scan existing files first
+    agent.scan_existing_files()
+    
+    # Set up file watcher
+    observer = Observer()
+    observer.schedule(agent, str(agent.watch_folder), recursive=False)
+    observer.start()
+    
+    print(f"{Fore.GREEN}👁️  Watching for new files...{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}   Press Ctrl+C to stop{Style.RESET_ALL}\n")
+    
+    scan_interval = agent.config.get('scan_interval_seconds', 60)
+    last_report_date = None
+    
+    try:
+        while True:
+            time.sleep(scan_interval)
+            
+            # Check for daily report
+            today = datetime.utcnow().strftime('%Y-%m-%d')
+            if last_report_date != today:
+                if last_report_date is not None:
+                    agent.create_daily_report()
+                last_report_date = today
+            
+    except KeyboardInterrupt:
+        print(f"\n{Fore.YELLOW}🛑 Stopping agent...{Style.RESET_ALL}")
+        observer.stop()
+        
+        # Upload remaining pending actions
+        if agent.pending_upload_count > 0:
+            print(f"{Fore.CYAN}📤 Uploading remaining actions to Walrus...{Style.RESET_ALL}")
+            agent._upload_batch_to_walrus()
+        
+        # Create session summary
+        print(f"{Fore.CYAN}📤 Uploading session summary to Walrus...{Style.RESET_ALL}")
+        blob_id = agent.walrus.upload_session_summary()
+        if blob_id:
+            print(f"   {Fore.GREEN}✅ Summary Blob ID: {blob_id}{Style.RESET_ALL}")
+        
+        # Save local backup
+        agent.walrus.save_local_backup(Path("session_backup.json"))
+        print(f"   {Fore.GREEN}✅ Local backup saved{Style.RESET_ALL}")
+        
+        # Print final stats
+        agent.print_stats()
+    
+    observer.join()
+    print(f"{Fore.GREEN}👋 Deepurge Agent stopped. Goodbye!{Style.RESET_ALL}")
+
+
+if __name__ == "__main__":
+    main()

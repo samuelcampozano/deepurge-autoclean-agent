@@ -1,0 +1,18 @@
+# Deepurge AutoClean Agent - Dependencies
+# Author: Samuel Campozano Lopez
+# Sui Hackathon 2026
+
+# File monitoring
+watchdog>=3.0.0
+
+# HTTP requests for Walrus API
+requests>=2.31.0
+
+# Environment management
+python-dotenv>=1.0.0
+
+# Colored terminal output
+colorama>=0.4.6
+
+# Optional: Sui SDK for Python (advanced integration)
+# pysui>=0.50.0

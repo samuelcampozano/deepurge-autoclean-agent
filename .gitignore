@@ -1,0 +1,63 @@
+# Environment
+.env
+venv/
+env/
+.venv/
+ENV/
+
+# External plugins (reference only)
+sui-stack-claude-code-plugin/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+session_backup.json
+session_log.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test files
+test_*.db
+
+# Organized folder (don't track organized files)
+Organized/
+sui-stack-claude-code-plugin/
