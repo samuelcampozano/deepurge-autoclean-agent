@@ -371,6 +371,58 @@ a:hover { text-decoration: underline; }
 .console-line.ok  { color: var(--accent-green); }
 
 /* ─── Sidebar overlay ───────────────────────────────────── */
+
+/* ─── Insights Card ─────────────────────────────────────── */
+.insights-panel {
+    background: linear-gradient(135deg, #161b22 0%, #1a2233 100%);
+    border: 1px solid var(--accent-blue)33;
+}
+.insights-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 16px;
+}
+.insight-card {
+    display: flex; flex-direction: column; align-items: center;
+    text-align: center; padding: 18px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    transition: transform var(--transition), box-shadow var(--transition);
+}
+.insight-card:hover { transform: translateY(-3px); box-shadow: 0 4px 20px rgba(88,166,255,.15); }
+.insight-icon { font-size: 1.6rem; margin-bottom: 6px; }
+.insight-value { font-size: 1.3rem; font-weight: 800; color: var(--accent-blue); }
+.insight-label { font-size: .68rem; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: .5px; }
+
+/* ─── Walrus Blockchain Status ──────────────────────────── */
+.walrus-chain-panel {
+    background: linear-gradient(135deg, #161b22 0%, #1e1833 100%);
+    border: 1px solid var(--accent-purple)33;
+}
+.chain-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 14px;
+}
+.chain-metric {
+    display: flex; flex-direction: column; align-items: center;
+    text-align: center; padding: 14px 8px;
+    background: var(--bg-body);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+.chain-value {
+    font-size: 1.05rem; font-weight: 700; color: var(--accent-purple);
+    font-family: var(--mono);
+}
+.chain-value.chain-verified { color: var(--accent-green); }
+.chain-label {
+    font-size: .62rem; color: var(--text-muted); margin-top: 4px;
+    text-transform: uppercase; letter-spacing: .5px;
+}
+
+/* ─── Sidebar overlay ───────────────────────────────────── */
 .sidebar-overlay {
     display: none;
     position: fixed;

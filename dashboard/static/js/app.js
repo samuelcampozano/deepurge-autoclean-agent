@@ -231,8 +231,40 @@ async function loadDashboardData() {
         renderCategoryChart(data.categories || []);
         renderRecentActivity(data.recent_actions || []);
         renderUploadsTable(data.walrus_uploads || []);
+
+        // Load insights & blockchain metrics
+        loadInsights();
     } catch (err) {
         console.error("Dashboard load error:", err);
+    }
+}
+
+// ─── Insights & Blockchain Metrics ─────────────────────────
+async function loadInsights() {
+    try {
+        const resp = await fetch("/api/insights");
+        if (!resp.ok) return;
+        const d = await resp.json();
+
+        // Smart Insights card
+        $("#insightTimeSaved").textContent = d.time_saved_display || "–";
+        $("#insightTopCat").textContent = d.top_category
+            ? `${d.top_category} (${d.top_category_pct}%)`
+            : "–";
+        $("#insightDuplicates").textContent = d.duplicates_prevented || "0";
+        $("#insightBlobs").textContent = d.total_blobs || "0";
+
+        // Walrus Blockchain Status panel
+        $("#chainTotalBlobs").textContent = d.total_blobs || "0";
+        $("#chainStorage").textContent = d.walrus_storage_display || "0 B";
+        $("#chainOldest").textContent = d.oldest_blob
+            ? new Date(d.oldest_blob).toLocaleDateString()
+            : "–";
+        $("#chainNewest").textContent = d.newest_blob
+            ? new Date(d.newest_blob).toLocaleDateString()
+            : "–";
+    } catch (err) {
+        console.error("Insights load error:", err);
     }
 }
 

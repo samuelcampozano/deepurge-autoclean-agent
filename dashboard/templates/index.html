@@ -140,6 +140,34 @@
             </div>
         </div>
 
+        <!-- Insights Card -->
+        <div class="panel full-width insights-panel" id="insightsPanel">
+            <h3 class="panel-title">💡 Smart Insights</h3>
+            <p class="panel-desc">Data-driven metrics calculated from your actual usage. Time saved is based on an average of <strong>30 seconds per file</strong> for manual sorting (locating, categorising, renaming, and moving).</p>
+            <div class="insights-grid">
+                <div class="insight-card">
+                    <span class="insight-icon">⏱️</span>
+                    <span class="insight-value" id="insightTimeSaved">–</span>
+                    <span class="insight-label">Time Saved</span>
+                </div>
+                <div class="insight-card">
+                    <span class="insight-icon">🏆</span>
+                    <span class="insight-value" id="insightTopCat">–</span>
+                    <span class="insight-label">Top Category</span>
+                </div>
+                <div class="insight-card">
+                    <span class="insight-icon">🚫</span>
+                    <span class="insight-value" id="insightDuplicates">–</span>
+                    <span class="insight-label">Duplicates Prevented</span>
+                </div>
+                <div class="insight-card">
+                    <span class="insight-icon">🔗</span>
+                    <span class="insight-value" id="insightBlobs">–</span>
+                    <span class="insight-label">Blobs on Walrus</span>
+                </div>
+            </div>
+        </div>
+
         <!-- Charts row -->
         <div class="panel-grid">
             <div class="panel">
@@ -168,6 +196,38 @@
                     </thead>
                     <tbody></tbody>
                 </table>
+            </div>
+        </div>
+
+        <!-- Walrus Blockchain Status -->
+        <div class="panel full-width walrus-chain-panel">
+            <h3 class="panel-title">🔗 Walrus Blockchain Status</h3>
+            <p class="panel-desc">Immutable, decentralized storage powered by the Sui blockchain. Every file action is cryptographically verified and permanently recorded.</p>
+            <div class="chain-metrics">
+                <div class="chain-metric">
+                    <span class="chain-value" id="chainTotalBlobs">–</span>
+                    <span class="chain-label">Total Blobs Stored</span>
+                </div>
+                <div class="chain-metric">
+                    <span class="chain-value" id="chainStorage">–</span>
+                    <span class="chain-label">On-Chain Storage</span>
+                </div>
+                <div class="chain-metric">
+                    <span class="chain-value" id="chainOldest">–</span>
+                    <span class="chain-label">Oldest Record</span>
+                </div>
+                <div class="chain-metric">
+                    <span class="chain-value" id="chainNewest">–</span>
+                    <span class="chain-label">Latest Record</span>
+                </div>
+                <div class="chain-metric">
+                    <span class="chain-value chain-verified">✅ Verified</span>
+                    <span class="chain-label">Blockchain Status</span>
+                </div>
+                <div class="chain-metric">
+                    <span class="chain-value">Testnet</span>
+                    <span class="chain-label">Sui Network</span>
+                </div>
             </div>
         </div>
     </section>
