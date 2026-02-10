@@ -2,16 +2,45 @@
 
 <div align="center">
 
-![Deepurge Banner](https://img.shields.io/badge/Sui-Hackathon%202026-blue?style=for-the-badge)
+![Deepurge Banner](https://img.shields.io/badge/x%20OpenClaw-Agent%20Hackathon-blue?style=for-the-badge)
 ![Python](https://img.shields.io/badge/Python-3.10+-green?style=for-the-badge&logo=python)
 ![Walrus](https://img.shields.io/badge/Walrus-Enabled-purple?style=for-the-badge)
 ![Windows](https://img.shields.io/badge/Windows-11-0078D6?style=for-the-badge&logo=windows)
 
 **An autonomous file organization agent that monitors your Downloads folder, automatically classifies and organizes files, and logs all actions to Walrus decentralized storage on the Sui blockchain.**
 
-[Demo Video](#-demo-video) • [Installation](#-quick-start) • [Features](#-features) • [Architecture](#-architecture)
+[Demo Video](#-demo-video) • [Screenshots](#-screenshots) • [Installation](#-quick-start) • [Features](#-features) • [Architecture](#-architecture)
 
 </div>
+
+---
+
+## 📸 Screenshots
+
+### 🎮 Control Panel – Start/Stop Agent & Generate Demo Files
+<p align="center">
+  <img src="img/in progress running agent.png" alt="Control Panel - Agent Running" width="90%">
+</p>
+
+### 📊 Dashboard – Live Stats & Category Breakdown
+<p align="center">
+  <img src="img/in progress agent done.png" alt="Dashboard with stats" width="90%">
+</p>
+
+### 📂 Before – Messy Downloads Folder
+<p align="center">
+  <img src="img/downloads folder with information.png" alt="Downloads before agent" width="90%">
+</p>
+
+### ✅ After – Agent Organized Everything
+<p align="center">
+  <img src="img/after agent download folder.png" alt="Downloads after agent" width="90%">
+</p>
+
+### 🖥️ Agent Processing Files in Real-Time
+<p align="center">
+  <img src="img/in progress agent.png" alt="Agent processing" width="90%">
+</p>
 
 ---
 
@@ -21,7 +50,7 @@
 
 - GitHub: [@samuelcampozano](https://github.com/samuelcampozano)
 - Email: samuelco860@gmail.com
-- Project: Sui Hackathon 2026
+- Project: x OpenClaw Agent Hackathon
 
 ---
 
@@ -36,7 +65,10 @@
 | 💾 **SQLite Logging** | Local database for action history |
 | 🦭 **Walrus Integration** | Logs all actions to Sui blockchain storage |
 | 📊 **Daily Reports** | Automatic daily summaries uploaded to Walrus |
-| 🔄 **Error Recovery** | Retry logic with configurable attempts |
+| 🎮 **Control Panel** | Web UI to start/stop the agent, generate demo files, and stream live console output |
+| 📊 **Web Dashboard** | Modern dark-themed UI with stat cards, category charts, Walrus blob explorer & live feed |
+| 🐳 **Docker Full-Stack** | One container runs both the agent and dashboard — fully portable |
+| �🔄 **Error Recovery** | Retry logic with configurable attempts |
 | ⚙️ **Configurable** | JSON-based settings for all parameters |
 | 🖥️ **Windows Service Ready** | Can run as scheduled task or service |
 
@@ -83,6 +115,24 @@
                │  Testnet:                     │
                │  publisher.walrus-testnet.    │
                │  walrus.space                 │
+               └───────────────┬───────────────┘
+                               │
+                               ▼
+               ┌───────────────────────────────┐
+               │    🖥️  DEEPURGE DASHBOARD      │
+               │   (Flask + Docker)            │
+               │                               │
+               │  • 🎮 Control Panel           │
+               │    Start/Stop Agent from UI   │
+               │    Generate Demo Files        │
+               │    Live Console Streaming     │
+               │                               │
+               │  • 📊 Dashboard & Stats       │
+               │  • 🔍 Blob Explorer           │
+               │  • 📜 Upload History          │
+               │  • ⚡ Live Activity Feed       │
+               │                               │
+               │  http://localhost:5050        │
                └───────────────────────────────┘
 ```
 
@@ -223,9 +273,72 @@ https://aggregator.walrus-testnet.walrus.space/v1/{blob_id}
 
 ---
 
+## 🖥️ Web Dashboard & Control Panel
+
+Deepurge includes a **modern dark-themed web dashboard** with a built-in **Control Panel** to manage the agent directly from your browser.
+
+<p align="center">
+  <img src="img/in progress agent done.png" alt="Dashboard" width="80%">
+</p>
+
+### Views
+
+| View | Description |
+|------|-------------|
+| 🎮 **Control Panel** | Start/stop the agent, generate demo files, live console output streaming |
+| 📊 **Dashboard** | Stat cards (files processed, uploads, data size), category chart, recent activity |
+| 🔍 **Blob Explorer** | Paste any Walrus blob ID or URL to view the data in a friendly table |
+| 📜 **Upload History** | Browse every batch, report & session the agent has uploaded |
+| ⚡ **Live Feed** | Auto-refreshing activity feed straight from the local database |
+
+### Quick Start (no Docker)
+
+```bash
+# Double-click:
+dashboard.bat
+
+# Or manually:
+pip install flask flask-cors requests
+cd dashboard
+python app.py
+```
+
+Then open **http://localhost:5050** in your browser.
+
+### 🐳 Docker (Recommended – Full Stack)
+
+One command gives you the **agent + dashboard** in a portable container that mounts your real Downloads folder:
+
+```bash
+# Build and run (uses your Downloads folder by default)
+docker-compose up --build -d
+
+# Or specify a custom watch folder:
+DEEPURGE_WATCH_FOLDER=/path/to/folder docker-compose up --build -d
+
+# Dashboard + Control Panel at http://localhost:5050
+```
+
+The Docker container:
+- Mounts your **real Downloads folder** so the agent organizes actual files
+- Persists the database between restarts via a Docker volume
+- Lets you start/stop the agent and generate demo files from the browser
+- Works on any machine with Docker installed — **fully portable**
+
+### Try it now with an existing blob
+
+Open the **Blob Explorer** tab and paste:
+```
+gtkNTOBjo-LeesDwyPfj_KIsRv-uFII0XyIBwpPjp70
+```
+
+The dashboard will fetch the data from Walrus and display all 100 file actions in a clean, readable table with stats.
+
+---
+
 ## 🎬 Demo Video
 
-> Coming soon - 3-minute demonstration for Sui Hackathon
+> 🎥 Video demonstration coming soon! In the meantime, check out the [Screenshots](#-screenshots) above.
 
 ### Generate Demo Files
 
@@ -285,19 +398,37 @@ python demo_generator.py ~/Downloads 50
 
 ```
 deepurge-autoclean-agent/
-├── 📄 agent.py              # Main agent entry point
-├── 📄 classifier.py         # File classification logic
-├── 📄 database.py           # SQLite operations
-├── 📄 walrus_logger.py      # Walrus storage integration
-├── 📄 demo_generator.py     # Test file generator
-├── 📄 config.json           # User configuration
-├── 📄 requirements.txt      # Python dependencies
+├── 📄 agent.py              # Main agent – file monitoring, organizing & Walrus uploads
+├── 📄 classifier.py         # File classification by extension
+├── 📄 database.py           # SQLite operations & statistics
+├── 📄 walrus_logger.py      # Walrus decentralized storage integration
+├── 📄 demo_generator.py     # Generate test files across categories
+├── 📄 config.json           # Local configuration (watch ~/Downloads)
+├── 📄 config.docker.json    # Docker configuration (watch /data/Downloads)
+├── 📄 requirements.txt      # Agent Python dependencies
 ├── 📄 install.bat           # Windows installer
-├── 📄 run.bat               # Start script
-├── 📄 demo.bat              # Demo generator script
+├── 📄 run.bat               # Start agent script
+├── 📄 demo.bat              # Demo file generator script
+├── 📄 dashboard.bat         # Dashboard launcher (local)
+├── 📄 Dockerfile.dashboard  # Full-stack Docker image (agent + dashboard)
+├── 📄 docker-compose.yml    # Docker Compose – mounts real Downloads folder
+├── 📄 .dockerignore         # Docker build exclusions
+├── 📁 img/                  # Screenshots for README
+│   ├── 🖼️ after agent download folder.png
+│   ├── 🖼️ downloads folder with information.png
+│   ├── 🖼️ in progress agent done.png
+│   ├── 🖼️ in progress agent.png
+│   └── 🖼️ in progress running agent.png
+├── 📁 dashboard/            # Web dashboard + Control Panel
+│   ├── 📄 app.py            # Flask backend + ProcessManager (agent controller)
+│   ├── 📄 requirements.txt  # Dashboard dependencies
+│   ├── 📁 templates/
+│   │   └── 📄 index.html    # Main dashboard page (5 views)
+│   └── 📁 static/
+│       ├── 📁 css/style.css  # Dark theme stylesheet
+│       └── 📁 js/app.js      # Frontend logic + agent control
 ├── 📄 README.md             # This file
-├── 📄 .gitignore            # Git ignore rules
-└── 📁 sui-stack-claude-code-plugin/  # Sui Stack reference
+└── 📄 .gitignore            # Git ignore rules
 ```
 
 ---
@@ -350,21 +481,25 @@ MIT License - feel free to use this project for any purpose.
 
 ---
 
-## 🏆 Built for Sui Hackathon 2026
+## 🏆 Built for x OpenClaw Agent Hackathon
 
 This project demonstrates integration with:
 
 - **Walrus Storage** - Decentralized blob storage on Sui
 - **Sui Network** - Layer 1 blockchain foundation
 - **Python Ecosystem** - Modern file monitoring and processing
+- **Web Dashboard** - Containerized Walrus blob viewer
 
 ### Hackathon Requirements Met
 
-✅ Monitor Downloads folder  
-✅ Classify files automatically  
-✅ Move to organized folders  
-✅ Log actions to Walrus  
-✅ README with author name  
+✅ Monitor Downloads folder (real filesystem via Docker volumes)  
+✅ Classify files automatically into 7 categories  
+✅ Move & rename to organized folders with timestamps  
+✅ Log all actions to Walrus decentralized storage  
+✅ Web dashboard with stat cards, charts & Walrus blob explorer  
+✅ Control Panel UI to start/stop agent & generate demo files  
+✅ Full-stack Docker containerization (agent + dashboard)  
+✅ README with author name, screenshots & documentation  
 ✅ Clean, documented code  
 ✅ Demo file generator  
 ✅ Windows 11 compatible  
