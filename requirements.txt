@@ -14,5 +14,12 @@ python-dotenv>=1.0.0
 # Colored terminal output
 colorama>=0.4.6
 
+# Document & Image Intelligence
+pymupdf>=1.23.0
+Pillow>=10.0.0
+
+# Path 2: Vault – AES-256-GCM encryption
+cryptography>=41.0.0
+
 # Optional: Sui SDK for Python (advanced integration)
 # pysui>=0.50.0

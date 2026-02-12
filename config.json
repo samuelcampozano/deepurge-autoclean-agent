@@ -48,5 +48,26 @@
     "check_duplicates": true,
     "auto_start": true,
     "retry_attempts": 3,
-    "retry_delay_seconds": 5
+    "retry_delay_seconds": 5,
+
+    "vault": {
+        "enabled": true,
+        "epochs": 10,
+        "auto_backup_on_workflow": true
+    },
+
+    "workflows": {
+        "enabled": true,
+        "auto_unzip": true,
+        "screenshot_to_pdf": false,
+        "rules": []
+    },
+
+    "sui_anchor": {
+        "enabled": true,
+        "rpc_url": "https://fullnode.testnet.sui.io:443",
+        "package_id": "",
+        "registry_id": "",
+        "signer_address": ""
+    }
 }

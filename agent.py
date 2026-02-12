@@ -36,8 +36,12 @@ from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileMovedE
 from colorama import init, Fore, Style
 
 from classifier import FileClassifier, format_file_size
+from intelligence import DeepIntelligence
 from database import Database
 from walrus_logger import WalrusLogger, WalrusLoggerDemo
+from workflows import WorkflowEngine
+from vault import DeepurgeVault, DeepurgeVaultDemo
+from sui_anchor import SuiAnchor
 
 # Initialize colorama for Windows
 init(autoreset=True)
@@ -88,6 +92,43 @@ class DeepurgeAgent(FileSystemEventHandler):
         # Blob history file for dashboard integration
         self.blob_history_path = Path("blob_history.json")
         
+        # Initialize Workflow Engine (Path 3: Flow)
+        wf_config = self.config.get('workflows', {})
+        if wf_config.get('enabled', True):
+            wf_rules = wf_config.get('rules', None) or None
+            self.workflow_engine = WorkflowEngine(
+                rules=wf_rules,
+                organized_folder=self.organized_folder,
+            )
+            self.logger.info("Workflow engine loaded with %d rules", len(self.workflow_engine.rules))
+        else:
+            self.workflow_engine = None
+
+        # Initialize Vault (Path 2: Vault)
+        vault_config = self.config.get('vault', {})
+        if vault_config.get('enabled', True):
+            try:
+                walrus_cfg = self.config.get('walrus', {})
+                self.vault = DeepurgeVault(
+                    aggregator_url=walrus_cfg.get('aggregator_url'),
+                    publisher_url=walrus_cfg.get('publisher_url'),
+                    epochs=vault_config.get('epochs', 10),
+                )
+            except Exception as e:
+                self.logger.warning(f"Vault init failed, using demo mode: {e}")
+                self.vault = DeepurgeVaultDemo()
+        else:
+            self.vault = DeepurgeVaultDemo()
+
+        # Initialize Sui Anchor (Path 3: on-chain root hash)
+        anchor_config = self.config.get('sui_anchor', {})
+        self.sui_anchor = SuiAnchor(
+            rpc_url=anchor_config.get('rpc_url'),
+            package_id=anchor_config.get('package_id') or None,
+            registry_id=anchor_config.get('registry_id') or None,
+            signer_address=anchor_config.get('signer_address') or None,
+        )
+
         # Statistics
         self.stats = {
             "files_processed": 0,
@@ -304,15 +345,23 @@ class DeepurgeAgent(FileSystemEventHandler):
                     )
                     return None
                 
-                # Generate destination path
-                new_filename = self._generate_new_filename(file_path)
-                destination_folder = self.organized_folder / category
+                # Generate destination path and smart name
+                intel = analysis.get("intelligence", {})
+                smart_name = DeepIntelligence.get_smart_name(file_path, intel)
+                new_filename = self._generate_new_filename(Path(smart_name + file_path.suffix))
+                
+                destination_folder = self.classifier.get_smart_destination(
+                    file_path, self.organized_folder, intel
+                )
+                
+                # Ensure sub-folders exist
+                destination_folder.mkdir(parents=True, exist_ok=True)
                 destination_path = destination_folder / new_filename
                 
                 # Handle name conflicts
                 counter = 1
                 while destination_path.exists():
-                    stem = file_path.stem
+                    stem = Path(smart_name).stem
                     suffix = file_path.suffix
                     timestamp = new_filename.rsplit('_', 1)[0]
                     destination_path = destination_folder / f"{timestamp}_{stem}_{counter}{suffix}"
@@ -346,12 +395,49 @@ class DeepurgeAgent(FileSystemEventHandler):
                     walrus_blob_id = self._upload_batch_to_walrus()
                 
                 # Print success message
+                sub_cat = intel.get("sub_category", "General")
                 print(f"{Fore.GREEN}✅ Moved:{Style.RESET_ALL} {file_path.name}")
-                print(f"   {Fore.BLUE}Category:{Style.RESET_ALL} {category}")
+                print(f"   {Fore.BLUE}Category:{Style.RESET_ALL} {category} ({sub_cat})")
                 print(f"   {Fore.BLUE}Size:{Style.RESET_ALL} {format_file_size(file_size)}")
                 print(f"   {Fore.BLUE}New name:{Style.RESET_ALL} {new_filename}")
                 if walrus_blob_id:
                     print(f"   {Fore.MAGENTA}Walrus Batch:{Style.RESET_ALL} {walrus_blob_id}")
+
+                # ── Run Workflow Engine on the moved file ──
+                if self.workflow_engine and destination_path.exists():
+                    def _vault_backup(fp):
+                        try:
+                            manifest = self.vault.store(fp)
+                            self.db.log_vault_file(
+                                file_name=fp.name,
+                                original_path=str(fp),
+                                blob_id=manifest["blob_id"],
+                                key_hex=manifest["key_hex"],
+                                nonce_hex=manifest["nonce_hex"],
+                                file_size=manifest["file_size"],
+                                encrypted_size=manifest["encrypted_size"],
+                                mime_type=manifest.get("mime_type", ""),
+                                sha256=manifest.get("sha256", ""),
+                                walrus_url=manifest.get("walrus_url", ""),
+                            )
+                            print(f"   {Fore.CYAN}🔐 Vault backup:{Style.RESET_ALL} {manifest['blob_id'][:24]}…")
+                        except Exception as ve:
+                            self.logger.warning(f"Vault backup failed: {ve}")
+
+                    wf_results = self.workflow_engine.evaluate(
+                        destination_path, vault_callback=_vault_backup
+                    )
+                    for wfr in wf_results:
+                        print(f"   {Fore.YELLOW}⚡ Workflow:{Style.RESET_ALL} {wfr['rule']}")
+                        for act in wfr.get("actions", []):
+                            print(f"      → {act['type']}: {act.get('status', '')}")
+                        self.db.log_workflow_execution(
+                            rule_name=wfr["rule"],
+                            file_name=wfr["file"],
+                            file_path=str(destination_path),
+                            actions_taken=json.dumps(wfr["actions"]),
+                        )
+
                 print()
                 
                 self.logger.info(f"Moved: {file_path.name} -> {category}/{new_filename}")
@@ -487,7 +573,7 @@ class DeepurgeAgent(FileSystemEventHandler):
         return processed
     
     def create_daily_report(self):
-        """Create and upload daily report to Walrus"""
+        """Create and upload daily report to Walrus, then anchor root hash"""
         today = datetime.utcnow().strftime('%Y-%m-%d')
         summary = self.db.get_daily_summary(today)
         
@@ -510,6 +596,22 @@ class DeepurgeAgent(FileSystemEventHandler):
             print(f"   {Fore.CYAN}Blob ID:{Style.RESET_ALL} {blob_id}")
             print(f"   {Fore.CYAN}View URL:{Style.RESET_ALL} {self.walrus.get_walrus_url(blob_id)}")
             self._save_blob_to_history(blob_id, "daily_report", summary['total_files'])
+
+            # ── Anchor root hash on Sui (Path 3) ──
+            try:
+                anchor_result = self.sui_anchor.anchor_daily_report(summary)
+                root_hash = anchor_result.get("root_hash", "")
+                self.db.save_anchor(
+                    date=today,
+                    root_hash=root_hash,
+                    tx_digest=anchor_result.get("tx_digest", ""),
+                    source=anchor_result.get("source", "local_ledger"),
+                    report_summary=json.dumps(summary),
+                )
+                print(f"   {Fore.GREEN}⚓ Root hash anchored:{Style.RESET_ALL} {root_hash[:24]}…")
+                print(f"   {Fore.GREEN}   Source:{Style.RESET_ALL} {anchor_result.get('source', 'local')}")
+            except Exception as e:
+                self.logger.warning(f"Sui anchor failed: {e}")
         
         return blob_id
     

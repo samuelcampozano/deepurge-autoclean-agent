@@ -16,9 +16,15 @@ from collections import deque
 from pathlib import Path
 from datetime import datetime
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_file
 from flask_cors import CORS
 import requests as http_requests
+
+# Add parent dir so we can import vault / workflows / sui_anchor
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from vault import DeepurgeVault, DeepurgeVaultDemo
+from workflows import WorkflowEngine
+from sui_anchor import SuiAnchor
 
 app = Flask(__name__)
 CORS(app)
@@ -46,6 +52,40 @@ def _get_watch_folder():
         return str(Path(folder).expanduser())
     except Exception:
         return str(Path.home() / "Downloads")
+
+
+def _load_config():
+    try:
+        with open(CONFIG_PATH) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+# ──────────────────────────── Singletons ───────────────────
+
+_cfg = _load_config()
+_walrus_cfg = _cfg.get("walrus", {})
+_vault_cfg = _cfg.get("vault", {})
+_anchor_cfg = _cfg.get("sui_anchor", {})
+
+try:
+    vault = DeepurgeVault(
+        aggregator_url=_walrus_cfg.get("aggregator_url"),
+        publisher_url=_walrus_cfg.get("publisher_url"),
+        epochs=_vault_cfg.get("epochs", 10),
+    )
+except Exception:
+    vault = DeepurgeVaultDemo()
+
+workflow_engine = WorkflowEngine(organized_folder=Path(_get_watch_folder()).parent / "Organized")
+
+sui_anchor = SuiAnchor(
+    rpc_url=_anchor_cfg.get("rpc_url"),
+    package_id=_anchor_cfg.get("package_id") or None,
+    registry_id=_anchor_cfg.get("registry_id") or None,
+    signer_address=_anchor_cfg.get("signer_address") or None,
+)
 
 
 # ──────────────────────────── Process Manager ──────────────────
@@ -290,6 +330,271 @@ def db_walrus_blobs():
         return jsonify({"blobs": blobs})
     except Exception:
         return jsonify({"blobs": []})
+
+
+# ──────────────────────────── Vault API (Path 2) ───────────────
+
+@app.route("/api/vault/upload", methods=["POST"])
+def vault_upload():
+    """Upload a file to the Deepurge Vault (encrypted → Walrus)."""
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    f = request.files["file"]
+    if not f.filename:
+        return jsonify({"error": "Empty filename"}), 400
+
+    # Save to temp location
+    tmp_dir = AGENT_ROOT / "_vault_tmp"
+    tmp_dir.mkdir(exist_ok=True)
+    tmp_path = tmp_dir / f.filename
+    f.save(str(tmp_path))
+
+    try:
+        manifest = vault.store(tmp_path)
+
+        # Generate share token & link
+        share_token = vault.create_share_token(
+            manifest["blob_id"], manifest["key_hex"],
+            manifest["nonce_hex"], manifest["file_name"],
+        )
+        share_link = vault.generate_share_link(
+            manifest["blob_id"], manifest["key_hex"],
+            manifest["nonce_hex"], manifest["file_name"],
+        )
+        manifest["share_token"] = share_token
+        manifest["share_link"] = share_link
+
+        # Log to DB
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO vault_files (
+                    timestamp, file_name, original_path, blob_id, key_hex,
+                    nonce_hex, file_size, encrypted_size, mime_type, sha256,
+                    walrus_url, share_token, folder_name
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                manifest["uploaded_at"], manifest["file_name"], str(tmp_path),
+                manifest["blob_id"], manifest["key_hex"], manifest["nonce_hex"],
+                manifest["file_size"], manifest["encrypted_size"],
+                manifest.get("mime_type", ""), manifest.get("sha256", ""),
+                manifest.get("walrus_url", ""), share_token, "",
+            ))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+        return jsonify(manifest)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+@app.route("/api/vault/upload-folder", methods=["POST"])
+def vault_upload_folder():
+    """Upload all files in a folder path to vault."""
+    data = request.get_json(silent=True) or {}
+    folder_path = data.get("folder_path", "")
+    if not folder_path or not Path(folder_path).is_dir():
+        return jsonify({"error": "Invalid folder path"}), 400
+
+    try:
+        manifest = vault.store_folder(Path(folder_path))
+
+        # Log folder to DB
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO vault_folders (timestamp, folder_name, file_count, root_hash, key_hex, manifest_blob_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                manifest["uploaded_at"], manifest["folder_name"],
+                manifest["file_count"], manifest["root_hash"],
+                manifest["key_hex"], manifest.get("manifest_blob_id", ""),
+            ))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+        return jsonify(manifest)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/vault/download", methods=["POST"])
+def vault_download():
+    """Download and decrypt a file from vault."""
+    data = request.get_json(silent=True) or {}
+    blob_id = data.get("blob_id", "")
+    key_hex = data.get("key_hex", "")
+    nonce_hex = data.get("nonce_hex", "")
+    file_name = data.get("file_name", "downloaded_file")
+
+    if not all([blob_id, key_hex, nonce_hex]):
+        return jsonify({"error": "blob_id, key_hex, nonce_hex required"}), 400
+
+    try:
+        plaintext = vault.retrieve(blob_id, key_hex, nonce_hex)
+        import io
+        return send_file(
+            io.BytesIO(plaintext),
+            download_name=file_name,
+            as_attachment=True,
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/vault/files")
+def vault_files():
+    """List vault files from DB."""
+    if not DB_PATH.exists():
+        return jsonify({"files": []})
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM vault_files ORDER BY id DESC LIMIT 100")
+        files = [dict(r) for r in cur.fetchall()]
+        conn.close()
+        return jsonify({"files": files})
+    except Exception:
+        return jsonify({"files": []})
+
+
+@app.route("/api/vault/folders")
+def vault_folders():
+    """List vault folders from DB."""
+    if not DB_PATH.exists():
+        return jsonify({"folders": []})
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM vault_folders ORDER BY id DESC LIMIT 50")
+        folders = [dict(r) for r in cur.fetchall()]
+        conn.close()
+        return jsonify({"folders": folders})
+    except Exception:
+        return jsonify({"folders": []})
+
+
+@app.route("/api/vault/share", methods=["POST"])
+def vault_share():
+    """Generate a share link for a vault file."""
+    data = request.get_json(silent=True) or {}
+    blob_id = data.get("blob_id", "")
+    key_hex = data.get("key_hex", "")
+    nonce_hex = data.get("nonce_hex", "")
+    file_name = data.get("file_name", "")
+
+    if not all([blob_id, key_hex, nonce_hex]):
+        return jsonify({"error": "Missing parameters"}), 400
+
+    token = vault.create_share_token(blob_id, key_hex, nonce_hex, file_name)
+    link = vault.generate_share_link(blob_id, key_hex, nonce_hex, file_name)
+    return jsonify({"share_token": token, "share_link": link})
+
+
+@app.route("/vault/share")
+def vault_share_page():
+    """Serve the share page (decryption happens client-side via JS)."""
+    return render_template("index.html")
+
+
+# ──────────────────────────── Workflow API (Path 3) ────────────
+
+@app.route("/api/workflows/rules")
+def workflows_rules():
+    """Get all workflow rules."""
+    return jsonify({"rules": workflow_engine.get_rules()})
+
+
+@app.route("/api/workflows/rules", methods=["POST"])
+def workflows_add_rule():
+    """Add a new workflow rule."""
+    data = request.get_json(silent=True) or {}
+    required = ["name", "trigger_type", "trigger_value", "actions"]
+    if not all(k in data for k in required):
+        return jsonify({"error": "Missing fields: name, trigger_type, trigger_value, actions"}), 400
+
+    workflow_engine.add_rule(data)
+    return jsonify({"status": "added", "rule": data})
+
+
+@app.route("/api/workflows/rules/<name>", methods=["DELETE"])
+def workflows_delete_rule(name):
+    """Delete a workflow rule."""
+    workflow_engine.remove_rule(name)
+    return jsonify({"status": "deleted", "name": name})
+
+
+@app.route("/api/workflows/rules/<name>/toggle", methods=["POST"])
+def workflows_toggle_rule(name):
+    """Toggle a workflow rule on/off."""
+    data = request.get_json(silent=True) or {}
+    enabled = data.get("enabled", True)
+    workflow_engine.toggle_rule(name, enabled)
+    return jsonify({"status": "toggled", "name": name, "enabled": enabled})
+
+
+@app.route("/api/workflows/executions")
+def workflows_executions():
+    """Get recent workflow execution log."""
+    if not DB_PATH.exists():
+        return jsonify({"executions": []})
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM workflow_executions ORDER BY id DESC LIMIT 100")
+        execs = [dict(r) for r in cur.fetchall()]
+        conn.close()
+        return jsonify({"executions": execs})
+    except Exception:
+        return jsonify({"executions": []})
+
+
+# ──────────────────────────── Sui Anchor API (Path 3) ──────────
+
+@app.route("/api/anchors")
+def anchors_list():
+    """List all Sui anchor entries."""
+    if not DB_PATH.exists():
+        return jsonify({"anchors": sui_anchor.get_local_anchors()})
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM sui_anchors ORDER BY id DESC LIMIT 50")
+        anchors = [dict(r) for r in cur.fetchall()]
+        conn.close()
+        # Merge with local ledger if DB is empty
+        if not anchors:
+            anchors = sui_anchor.get_local_anchors()
+        return jsonify({"anchors": anchors})
+    except Exception:
+        return jsonify({"anchors": sui_anchor.get_local_anchors()})
+
+
+@app.route("/api/anchors/verify", methods=["POST"])
+def anchors_verify():
+    """Verify a root hash for a given date."""
+    data = request.get_json(silent=True) or {}
+    date = data.get("date", "")
+    root_hash = data.get("root_hash", "")
+    if not date or not root_hash:
+        return jsonify({"error": "date and root_hash required"}), 400
+
+    result = sui_anchor.verify_on_chain(date, root_hash)
+    return jsonify(result)
 
 
 # ──────────────────────────── Insights API ─────────────────────

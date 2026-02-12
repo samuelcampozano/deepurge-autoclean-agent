@@ -38,6 +38,15 @@
         <a href="#" class="nav-item" data-view="live">
             <span class="nav-icon">⚡</span> Live Feed
         </a>
+        <a href="#" class="nav-item" data-view="vault">
+            <span class="nav-icon">🔐</span> Vault
+        </a>
+        <a href="#" class="nav-item" data-view="workflows">
+            <span class="nav-icon">⚙️</span> Workflows
+        </a>
+        <a href="#" class="nav-item" data-view="anchors">
+            <span class="nav-icon">⚓</span> Sui Anchor
+        </a>
     </nav>
 
     <div class="sidebar-footer">
@@ -313,6 +322,251 @@
                 <span class="live-status" id="liveStatus">Paused</span>
             </div>
             <div class="activity-list large" id="liveFeed"></div>
+        </div>
+    </section>
+
+    <!-- ═══════════ VIEW: Vault (Path 2) ═══════════ -->
+    <section class="view" id="view-vault">
+
+        <!-- Upload to Vault -->
+        <div class="panel full-width vault-panel">
+            <h3 class="panel-title">🔐 Deepurge Vault — Encrypted Walrus Storage</h3>
+            <p class="panel-desc">
+                Upload files with <strong>AES-256-GCM</strong> client-side encryption.
+                Only you hold the decryption key — Walrus stores encrypted ciphertext only.
+            </p>
+
+            <div class="vault-upload-area">
+                <div class="vault-dropzone" id="vaultDropzone">
+                    <span class="vault-drop-icon">📤</span>
+                    <p>Drag & drop a file here or <label for="vaultFileInput" class="vault-browse">browse</label></p>
+                    <input type="file" id="vaultFileInput" style="display:none" />
+                    <span class="vault-drop-hint">File will be encrypted before leaving your machine</span>
+                </div>
+                <button class="btn btn-primary" id="btnVaultUpload" disabled>🔒 Encrypt & Upload to Walrus</button>
+            </div>
+
+            <!-- Upload result -->
+            <div class="vault-result hidden" id="vaultResult">
+                <h4>✅ File Stored in Vault</h4>
+                <div class="vault-result-grid">
+                    <div class="vault-field"><span class="vault-label">Blob ID</span><span class="vault-value mono" id="vaultBlobId">–</span></div>
+                    <div class="vault-field"><span class="vault-label">SHA-256</span><span class="vault-value mono" id="vaultSha256">–</span></div>
+                    <div class="vault-field"><span class="vault-label">Encrypted Size</span><span class="vault-value" id="vaultEncSize">–</span></div>
+                    <div class="vault-field"><span class="vault-label">🔑 Key (keep secret!)</span><span class="vault-value mono key-blur" id="vaultKeyHex">–</span></div>
+                </div>
+                <div class="vault-share-row">
+                    <span class="vault-label">🔗 Share Link</span>
+                    <input type="text" class="input" id="vaultShareLink" readonly />
+                    <button class="btn btn-sm btn-outline" id="btnCopyShareLink">📋 Copy</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Folder Sync -->
+        <div class="panel full-width">
+            <h3 class="panel-title">📁 Folder Sync to Walrus</h3>
+            <p class="panel-desc">Sync an entire folder — every file is encrypted with a single key and uploaded.</p>
+            <div class="vault-folder-row">
+                <input type="text" class="input" id="vaultFolderPath" placeholder="Enter folder path (e.g. C:\Users\you\Documents\Contracts)" />
+                <button class="btn btn-primary" id="btnVaultSyncFolder">🔄 Sync Folder</button>
+            </div>
+            <div class="vault-folder-result hidden" id="vaultFolderResult">
+                <p class="vault-folder-summary" id="vaultFolderSummary"></p>
+            </div>
+        </div>
+
+        <!-- Vault Files List -->
+        <div class="panel full-width">
+            <h3 class="panel-title">🗄️ Vault Files</h3>
+            <div class="table-wrap">
+                <table class="data-table" id="vaultFilesTable">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>File</th>
+                            <th>Size</th>
+                            <th>Blob ID</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Decrypt / Download -->
+        <div class="panel full-width">
+            <h3 class="panel-title">📥 Decrypt & Download</h3>
+            <p class="panel-desc">Paste a share link or manually enter blob ID + key to retrieve and decrypt a file.</p>
+            <div class="vault-decrypt-row">
+                <input type="text" class="input" id="vaultDecryptInput" placeholder="Paste share link or blob ID" />
+                <input type="text" class="input" id="vaultDecryptKey" placeholder="Decryption Key (hex)" />
+                <button class="btn btn-primary" id="btnVaultDecrypt">📥 Decrypt & Download</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ VIEW: Workflows (Path 3) ═══════════ -->
+    <section class="view" id="view-workflows">
+
+        <div class="panel full-width workflows-panel">
+            <h3 class="panel-title">⚙️ Automation Workflows</h3>
+            <p class="panel-desc">
+                Define IF→THEN rules: when a file's content matches a pattern, the agent automatically
+                moves, converts, or backs it up to Walrus.  OCR is used for PDFs and images.
+            </p>
+
+            <!-- Rules List -->
+            <div class="wf-rules-list" id="wfRulesList"></div>
+
+            <!-- Add Rule Form -->
+            <details class="wf-add-rule-details">
+                <summary class="btn btn-sm btn-outline">➕ Add New Rule</summary>
+                <div class="wf-add-rule-form">
+                    <div class="wf-form-row">
+                        <label>Rule Name</label>
+                        <input type="text" class="input input-sm" id="wfRuleName" placeholder="e.g. Tax Documents" />
+                    </div>
+                    <div class="wf-form-row">
+                        <label>Trigger Type</label>
+                        <select class="input input-sm" id="wfTriggerType">
+                            <option value="content_match">Content Match (OCR)</option>
+                            <option value="extension_match">Extension Match</option>
+                            <option value="filename_match">Filename Match</option>
+                        </select>
+                    </div>
+                    <div class="wf-form-row">
+                        <label>Trigger Value (regex or extensions)</label>
+                        <input type="text" class="input input-sm" id="wfTriggerValue" placeholder="e.g. total\s*due|invoice" />
+                    </div>
+                    <div class="wf-form-row">
+                        <label>Actions (comma-separated: move:FolderName, tag:value, walrus_backup, unzip, convert_to_pdf)</label>
+                        <input type="text" class="input input-sm" id="wfActions" placeholder="e.g. move:Taxes, walrus_backup" />
+                    </div>
+                    <button class="btn btn-primary btn-sm" id="btnWfAddRule">✅ Save Rule</button>
+                </div>
+            </details>
+        </div>
+
+        <!-- Execution Log -->
+        <div class="panel full-width">
+            <h3 class="panel-title">📋 Workflow Execution Log</h3>
+            <div class="activity-list large" id="wfExecutionLog"></div>
+        </div>
+
+        <!-- File Conversion Tools -->
+        <div class="panel full-width">
+            <h3 class="panel-title">🔄 Quick Conversion Tools</h3>
+            <p class="panel-desc">Manual one-off file conversions.</p>
+            <div class="conversion-grid">
+                <div class="conversion-card">
+                    <span class="conversion-icon">📸→📄</span>
+                    <h4>Image to PDF</h4>
+                    <p>Convert PNG/JPG screenshots to PDF</p>
+                    <p class="panel-desc">Handled automatically by the agent when the Screenshot to PDF rule is enabled.</p>
+                </div>
+                <div class="conversion-card">
+                    <span class="conversion-icon">📦→📂</span>
+                    <h4>Auto-Unzip</h4>
+                    <p>ZIP archives are extracted automatically</p>
+                    <p class="panel-desc">Enable the "Auto-Unzip Archives" rule above to activate.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ VIEW: Sui Anchor (Path 3) ═══════════ -->
+    <section class="view" id="view-anchors">
+
+        <div class="panel full-width anchor-panel">
+            <h3 class="panel-title">⚓ Sui On-Chain Anchor</h3>
+            <p class="panel-desc">
+                Each daily report's <strong>root hash</strong> (SHA-256) is anchored on the Sui blockchain.
+                This proves your file management logs haven't been tampered with — anyone can verify.
+            </p>
+
+            <div class="anchor-status-row">
+                <div class="anchor-metric">
+                    <span class="anchor-value" id="anchorCount">–</span>
+                    <span class="anchor-label">Reports Anchored</span>
+                </div>
+                <div class="anchor-metric">
+                    <span class="anchor-value" id="anchorLatestDate">–</span>
+                    <span class="anchor-label">Latest Anchor</span>
+                </div>
+                <div class="anchor-metric">
+                    <span class="anchor-value" id="anchorSource">–</span>
+                    <span class="anchor-label">Anchor Source</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Verify -->
+        <div class="panel full-width">
+            <h3 class="panel-title">🔍 Verify Report Integrity</h3>
+            <p class="panel-desc">Enter a date and root hash to check if it matches the on-chain/local record.</p>
+            <div class="anchor-verify-row">
+                <input type="date" class="input input-sm" id="anchorVerifyDate" />
+                <input type="text" class="input" id="anchorVerifyHash" placeholder="Root hash (SHA-256 hex)" />
+                <button class="btn btn-primary btn-sm" id="btnAnchorVerify">🔍 Verify</button>
+            </div>
+            <div class="anchor-verify-result hidden" id="anchorVerifyResult"></div>
+        </div>
+
+        <!-- Anchor History -->
+        <div class="panel full-width">
+            <h3 class="panel-title">📜 Anchor History</h3>
+            <div class="table-wrap">
+                <table class="data-table" id="anchorTable">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Root Hash</th>
+                            <th>Source</th>
+                            <th>TX Digest</th>
+                            <th>Anchored At</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Move Contract Info -->
+        <div class="panel full-width">
+            <h3 class="panel-title">📝 Smart Contract</h3>
+            <p class="panel-desc">
+                The Deepurge Anchor contract is a minimal Move module on Sui Testnet.
+                It stores a <code>Table&lt;date, root_hash&gt;</code> and emits <code>AnchorEvent</code>s.
+            </p>
+            <details class="raw-toggle">
+                <summary>View Move Contract Source</summary>
+                <pre class="raw-json" id="moveContractSource">module deepurge_anchor::deepurge_anchor {
+    use sui::event;
+    use sui::table::{Self, Table};
+
+    public struct Registry has key {
+        id: UID,
+        owner: address,
+        entries: Table&lt;vector&lt;u8&gt;, vector&lt;u8&gt;&gt;,
+        anchor_count: u64,
+    }
+
+    public struct AnchorEvent has copy, drop {
+        date: vector&lt;u8&gt;,
+        root_hash: vector&lt;u8&gt;,
+        anchor_count: u64,
+    }
+
+    public entry fun anchor_report(
+        registry: &amp;mut Registry,
+        date: vector&lt;u8&gt;,
+        root_hash: vector&lt;u8&gt;,
+        ctx: &amp;mut TxContext,
+    ) { ... }
+}</pre>
+            </details>
         </div>
     </section>
 

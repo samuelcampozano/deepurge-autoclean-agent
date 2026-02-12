@@ -77,7 +77,79 @@ class Database:
                     last_updated TEXT
                 )
             """)
-            
+
+            # ── Vault tables (Path 2) ──────────────────────
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS vault_files (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    file_name TEXT NOT NULL,
+                    original_path TEXT,
+                    blob_id TEXT NOT NULL,
+                    key_hex TEXT NOT NULL,
+                    nonce_hex TEXT NOT NULL,
+                    file_size INTEGER DEFAULT 0,
+                    encrypted_size INTEGER DEFAULT 0,
+                    mime_type TEXT,
+                    sha256 TEXT,
+                    walrus_url TEXT,
+                    share_token TEXT,
+                    folder_name TEXT,
+                    status TEXT DEFAULT 'stored'
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS vault_folders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    folder_name TEXT NOT NULL,
+                    file_count INTEGER DEFAULT 0,
+                    root_hash TEXT,
+                    key_hex TEXT NOT NULL,
+                    manifest_blob_id TEXT,
+                    status TEXT DEFAULT 'stored'
+                )
+            """)
+
+            # ── Workflow tables (Path 3) ───────────────────
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS workflow_rules (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE NOT NULL,
+                    trigger_type TEXT NOT NULL,
+                    trigger_value TEXT NOT NULL,
+                    actions_json TEXT NOT NULL,
+                    enabled INTEGER DEFAULT 1,
+                    created_at TEXT NOT NULL
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS workflow_executions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    rule_name TEXT NOT NULL,
+                    file_name TEXT NOT NULL,
+                    file_path TEXT,
+                    actions_taken TEXT,
+                    status TEXT DEFAULT 'completed'
+                )
+            """)
+
+            # ── Sui anchor ledger table ────────────────────
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS sui_anchors (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date TEXT UNIQUE NOT NULL,
+                    root_hash TEXT NOT NULL,
+                    tx_digest TEXT,
+                    source TEXT DEFAULT 'local_ledger',
+                    report_summary TEXT,
+                    anchored_at TEXT NOT NULL
+                )
+            """)
+
             # Initialize statistics row if not exists
             cursor.execute("""
                 INSERT OR IGNORE INTO statistics (id, total_files_processed, total_bytes_processed, last_updated)
@@ -332,6 +404,190 @@ class Database:
                 WHERE id IN ({placeholders})
             """, [blob_id] + action_ids)
             conn.commit()
+
+    # ── Vault Methods (Path 2) ────────────────────────────
+
+    def log_vault_file(
+        self,
+        file_name: str,
+        original_path: str,
+        blob_id: str,
+        key_hex: str,
+        nonce_hex: str,
+        file_size: int = 0,
+        encrypted_size: int = 0,
+        mime_type: str = "",
+        sha256: str = "",
+        walrus_url: str = "",
+        share_token: str = "",
+        folder_name: str = "",
+    ) -> int:
+        """Log a vault file entry."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO vault_files (
+                    timestamp, file_name, original_path, blob_id, key_hex,
+                    nonce_hex, file_size, encrypted_size, mime_type, sha256,
+                    walrus_url, share_token, folder_name
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                datetime.utcnow().isoformat() + "Z",
+                file_name, original_path, blob_id, key_hex,
+                nonce_hex, file_size, encrypted_size, mime_type, sha256,
+                walrus_url, share_token, folder_name,
+            ))
+            conn.commit()
+            return cursor.lastrowid
+
+    def log_vault_folder(
+        self,
+        folder_name: str,
+        file_count: int,
+        root_hash: str,
+        key_hex: str,
+        manifest_blob_id: str = "",
+    ) -> int:
+        """Log a vault folder sync."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO vault_folders (
+                    timestamp, folder_name, file_count, root_hash,
+                    key_hex, manifest_blob_id
+                ) VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                datetime.utcnow().isoformat() + "Z",
+                folder_name, file_count, root_hash, key_hex, manifest_blob_id,
+            ))
+            conn.commit()
+            return cursor.lastrowid
+
+    def get_vault_files(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get vault file entries."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM vault_files ORDER BY id DESC LIMIT ?
+            """, (limit,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_vault_folders(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get vault folder entries."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM vault_folders ORDER BY id DESC LIMIT ?
+            """, (limit,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    # ── Workflow Methods (Path 3) ─────────────────────────
+
+    def save_workflow_rule(
+        self,
+        name: str,
+        trigger_type: str,
+        trigger_value: str,
+        actions_json: str,
+        enabled: bool = True,
+    ) -> int:
+        """Save or update a workflow rule."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO workflow_rules
+                    (name, trigger_type, trigger_value, actions_json, enabled, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (name, trigger_type, trigger_value, actions_json, int(enabled),
+                  datetime.utcnow().isoformat() + "Z"))
+            conn.commit()
+            return cursor.lastrowid
+
+    def get_workflow_rules(self) -> List[Dict[str, Any]]:
+        """Get all workflow rules."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM workflow_rules ORDER BY id ASC")
+            return [dict(row) for row in cursor.fetchall()]
+
+    def delete_workflow_rule(self, name: str):
+        """Delete a workflow rule by name."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM workflow_rules WHERE name = ?", (name,))
+            conn.commit()
+
+    def log_workflow_execution(
+        self,
+        rule_name: str,
+        file_name: str,
+        file_path: str = "",
+        actions_taken: str = "",
+        status: str = "completed",
+    ) -> int:
+        """Log a workflow rule execution."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO workflow_executions
+                    (timestamp, rule_name, file_name, file_path, actions_taken, status)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (datetime.utcnow().isoformat() + "Z", rule_name, file_name,
+                  file_path, actions_taken, status))
+            conn.commit()
+            return cursor.lastrowid
+
+    def get_workflow_executions(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get recent workflow executions."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM workflow_executions ORDER BY id DESC LIMIT ?
+            """, (limit,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    # ── Sui Anchor Methods ────────────────────────────────
+
+    def save_anchor(
+        self,
+        date: str,
+        root_hash: str,
+        tx_digest: str = "",
+        source: str = "local_ledger",
+        report_summary: str = "",
+    ) -> int:
+        """Save a Sui anchor entry."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO sui_anchors
+                    (date, root_hash, tx_digest, source, report_summary, anchored_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (date, root_hash, tx_digest, source, report_summary,
+                  datetime.utcnow().isoformat() + "Z"))
+            conn.commit()
+            return cursor.lastrowid
+
+    def get_anchors(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get recent Sui anchors."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM sui_anchors ORDER BY id DESC LIMIT ?
+            """, (limit,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    def verify_anchor(self, date: str, root_hash: str) -> bool:
+        """Check if an anchor matches."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT root_hash FROM sui_anchors WHERE date = ?
+            """, (date,))
+            row = cursor.fetchone()
+            if row:
+                return row['root_hash'] == root_hash
+            return False
 
 
 if __name__ == "__main__":

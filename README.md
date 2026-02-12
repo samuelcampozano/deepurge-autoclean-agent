@@ -5,11 +5,12 @@
 ![Deepurge Banner](https://img.shields.io/badge/x%20OpenClaw-Agent%20Hackathon-blue?style=for-the-badge)
 ![Python](https://img.shields.io/badge/Python-3.10+-green?style=for-the-badge&logo=python)
 ![Walrus](https://img.shields.io/badge/Walrus-Enabled-purple?style=for-the-badge)
+![Sui](https://img.shields.io/badge/Sui-Testnet-4DA2FF?style=for-the-badge&logo=sui)
 ![Windows](https://img.shields.io/badge/Windows-11-0078D6?style=for-the-badge&logo=windows)
 
-**An autonomous file organization agent that monitors your Downloads folder, automatically classifies and organizes files, and logs all actions to Walrus decentralized storage on the Sui blockchain.**
+**An autonomous file organization agent with encrypted vault storage, content-aware automation workflows, and on-chain integrity anchoring — powered by Walrus decentralized storage and the Sui blockchain.**
 
-[Demo Video](#-demo-video) • [Screenshots](#-screenshots) • [Installation](#-quick-start) • [Features](#-features) • [Architecture](#-architecture)
+[Screenshots](#-screenshots) • [Features](#-features) • [Quick Start](#-quick-start) • [Architecture](#-architecture) • [Vault](#-vault--encrypted-walrus-storage) • [Workflows](#-workflows--automation-engine) • [Sui Anchor](#-sui-anchor--on-chain-integrity)
 
 </div>
 
@@ -56,19 +57,48 @@
 
 ## 🎯 Features
 
+### Core Agent
+
 | Feature | Description |
 |---------|-------------|
 | 📁 **Real-time Monitoring** | Watches Downloads folder using Watchdog library |
-| 🏷️ **Smart Classification** | Categorizes files by extension (Images, Documents, Videos, etc.) |
-| 📦 **Auto-Organization** | Moves files to organized folders with timestamps |
-| 🔍 **Duplicate Detection** | SHA256 hash comparison to skip duplicates |
-| 💾 **SQLite Logging** | Local database for action history |
-| 🦭 **Walrus Integration** | Logs all actions to Sui blockchain storage |
+| 🧠 **Deep Intelligence** | Analyzes file content (OCR/text extraction) and image metadata for smart sorting |
+| 🏷️ **Smart Classification** | Categorizes files by extension and content into sub-categories (Financial, Work, Screenshots, etc.) |
+| 📦 **Auto-Organization** | Moves files to organized folders with intelligent timestamps and naming |
+| 🔍 **Duplicate Detection** | SHA-256 hash comparison to skip duplicates |
+| 💾 **SQLite Logging** | Local database for action history, vault entries, workflow runs, and anchors |
+| 🦭 **Walrus Integration** | Logs all actions to Sui blockchain storage in batches |
 | 📊 **Daily Reports** | Automatic daily summaries uploaded to Walrus |
-| 🎮 **Control Panel** | Web UI to start/stop the agent, generate demo files, and stream live console output |
-| 📊 **Web Dashboard** | Modern dark-themed UI with stat cards, category charts, Walrus blob explorer & live feed |
+
+### Path 2 — Vault (Encrypted Walrus Storage)
+
+| Feature | Description |
+|---------|-------------|
+| 🔐 **AES-256-GCM Encryption** | Client-side encryption before upload — Walrus only stores ciphertext |
+| 📤 **Single-File Upload** | Encrypt and store any file with one click |
+| 📁 **Folder Sync** | Encrypt and upload an entire directory with a single shared key |
+| 🔗 **Shareable Links** | URL-fragment-based share links — decryption key never leaves the client |
+| 📥 **Decrypt & Download** | Retrieve and decrypt vault files from any browser |
+| 🔑 **Key Management** | Keys shown blurred by default, hover to reveal |
+
+### Path 3 — Workflows & Sui Anchor
+
+| Feature | Description |
+|---------|-------------|
+| ⚙️ **OCR Triggers** | Content-match rules powered by PyMuPDF text extraction |
+| 🔄 **File Conversion** | Automatic PNG→PDF conversion, auto-unzip archives |
+| 📋 **IF→THEN Rules** | Configurable triggers: content match, extension match, filename match |
+| ⚓ **On-Chain Root Hash** | Daily report SHA-256 anchored on Sui Testnet via Move smart contract |
+| 🔍 **Integrity Verification** | Anyone can verify report hashes against the on-chain record |
+| 📜 **Local Ledger Fallback** | Works without a deployed contract — anchors stored in local JSON ledger |
+
+### Dashboard & Infrastructure
+
+| Feature | Description |
+|---------|-------------|
+| 🎮 **Control Panel** | Web UI to start/stop the agent, generate demo files, stream live console |
+| 📊 **8-View Dashboard** | Control, Dashboard, Blob Explorer, History, Live Feed, Vault, Workflows, Sui Anchor |
 | 🐳 **Docker Full-Stack** | One container runs both the agent and dashboard — fully portable |
-| �🔄 **Error Recovery** | Retry logic with configurable attempts |
 | ⚙️ **Configurable** | JSON-based settings for all parameters |
 | 🖥️ **Windows Service Ready** | Can run as scheduled task or service |
 
@@ -77,74 +107,72 @@
 ## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                     DEEPURGE AUTOCLEAN AGENT                        │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐         │
-│   │   Watchdog   │───▶│  Classifier  │───▶│  Organizer   │         │
-│   │  (Monitor)   │    │  (Analyze)   │    │   (Move)     │         │
-│   └──────────────┘    └──────────────┘    └──────────────┘         │
-│          │                   │                    │                 │
-│          │                   │                    │                 │
-│          ▼                   ▼                    ▼                 │
-│   ┌──────────────────────────────────────────────────────┐         │
-│   │                    DATABASE (SQLite)                  │         │
-│   │     actions.db - Local logging & duplicate check     │         │
-│   └──────────────────────────────────────────────────────┘         │
-│                              │                                      │
-│                              ▼                                      │
-│   ┌──────────────────────────────────────────────────────┐         │
-│   │                  WALRUS LOGGER                        │         │
-│   │     Batch uploads every 100 actions                  │         │
-│   │     Daily report generation                          │         │
-│   └──────────────────────────────────────────────────────┘         │
-│                              │                                      │
-└──────────────────────────────┼──────────────────────────────────────┘
-                               │
-                               ▼
-               ┌───────────────────────────────┐
-               │      WALRUS STORAGE           │
-               │   (Sui Blockchain)            │
-               │                               │
-               │  • Decentralized storage      │
-               │  • Immutable action logs      │
-               │  • Daily reports              │
-               │  • Session summaries          │
-               │                               │
-               │  Testnet:                     │
-               │  publisher.walrus-testnet.    │
-               │  walrus.space                 │
-               └───────────────┬───────────────┘
-                               │
-                               ▼
-               ┌───────────────────────────────┐
-               │    🖥️  DEEPURGE DASHBOARD      │
-               │   (Flask + Docker)            │
-               │                               │
-               │  • 🎮 Control Panel           │
-               │    Start/Stop Agent from UI   │
-               │    Generate Demo Files        │
-               │    Live Console Streaming     │
-               │                               │
-               │  • 📊 Dashboard & Stats       │
-               │  • 🔍 Blob Explorer           │
-               │  • 📜 Upload History          │
-               │  • ⚡ Live Activity Feed       │
-               │                               │
-               │  http://localhost:5050        │
-               └───────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                       DEEPURGE AUTOCLEAN AGENT                          │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌────────────┐  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐  │
+│  │  Watchdog  │─▶│  Classifier  │─▶│  Organizer   │─▶│  Workflow   │  │
+│  │ (Monitor)  │  │  + Intel AI  │  │   (Move)     │  │  Engine     │  │
+│  └────────────┘  └──────────────┘  └──────────────┘  └──────┬──────┘  │
+│        │                │                  │                 │         │
+│        ▼                ▼                  ▼                 ▼         │
+│  ┌────────────────────────────────────────────────────────────────┐    │
+│  │                     DATABASE (SQLite)                          │    │
+│  │  actions · vault_files · workflow_executions · sui_anchors     │    │
+│  └────────────────────────────────────────────────────────────────┘    │
+│        │                                          │                    │
+│        ▼                                          ▼                    │
+│  ┌──────────────────┐                  ┌───────────────────┐          │
+│  │   WALRUS LOGGER  │                  │  DEEPURGE VAULT   │          │
+│  │  Batch uploads   │                  │  AES-256-GCM      │          │
+│  │  Daily reports   │                  │  Encrypted upload  │          │
+│  └────────┬─────────┘                  └────────┬──────────┘          │
+│           │                                      │                     │
+└───────────┼──────────────────────────────────────┼─────────────────────┘
+            │                                      │
+            ▼                                      ▼
+┌───────────────────────────────────────────────────────────┐
+│                    WALRUS STORAGE                          │
+│                  (Sui Blockchain)                          │
+│                                                           │
+│  • Immutable action logs    • Encrypted vault files       │
+│  • Daily reports            • Folder manifests            │
+│  • Session summaries        • Share links (URL fragment)  │
+│                                                           │
+│  publisher.walrus-testnet.walrus.space                    │
+└──────────────────────────┬────────────────────────────────┘
+                           │
+                           ▼
+┌───────────────────────────────────────────────────────────┐
+│               SUI TESTNET (Move Contract)                 │
+│                                                           │
+│  ⚓ deepurge_anchor::Registry                             │
+│     Table<date, root_hash> — tamper-proof daily anchors   │
+│     AnchorEvent emitted on each anchor                    │
+└──────────────────────────┬────────────────────────────────┘
+                           │
+                           ▼
+┌───────────────────────────────────────────────────────────┐
+│              🖥️  DEEPURGE DASHBOARD                       │
+│             (Flask · http://localhost:5050)                │
+│                                                           │
+│  🎮 Control Panel      📊 Dashboard & Stats              │
+│  🔍 Blob Explorer      📜 Upload History                 │
+│  ⚡ Live Feed           🔐 Vault                          │
+│  ⚙️ Workflows           ⚓ Sui Anchor                     │
+└───────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## 📋 File Categories
 
-| Category | Extensions | Emoji |
-|----------|-----------|-------|
-| 📸 **Images** | .jpg, .jpeg, .png, .gif, .webp, .svg, .bmp | 📸 |
-| 📄 **Documents** | .pdf, .docx, .doc, .txt, .md, .xlsx, .xls | 📄 |
-| 🎬 **Videos** | .mp4, .avi, .mov, .mkv, .wmv, .flv, .webm | 🎬 |
+| Category | Extensions | Intelligent Sub-Categories |
+|----------|-----------|---------------------------|
+| 📸 **Images** | .jpg, .jpeg, .png, .gif, .webp, .svg, .bmp | Screenshots, Landscapes, Portraits |
+| 📄 **Documents** | .pdf, .docx, .doc, .txt, .md, .xlsx, .xls | Financial, Work, Academic, Legal |
+| 🎬 **Videos** | .mp4, .avi, .mov, .mkv, .wmv, .flv, .webm | General |
 | 🎵 **Audio** | .mp3, .wav, .flac, .aac, .ogg, .wma | 🎵 |
 | 💻 **Code** | .py, .js, .ts, .html, .css, .java, .json, .sol, .move | 💻 |
 | 📦 **Archives** | .zip, .rar, .tar, .gz, .7z | 📦 |
@@ -220,8 +248,24 @@ Edit `config.json` to customize the agent:
         "network": "testnet",
         "upload_batch_size": 100
     },
-    "rename_pattern": "YYYYMMDD_HHMMSS",
-    "check_duplicates": true
+    "vault": {
+        "enabled": true,
+        "epochs": 10,
+        "auto_backup_on_workflow": true
+    },
+    "workflows": {
+        "enabled": true,
+        "auto_unzip": true,
+        "screenshot_to_pdf": false,
+        "rules": []
+    },
+    "sui_anchor": {
+        "enabled": true,
+        "rpc_url": "https://fullnode.testnet.sui.io:443",
+        "package_id": "",
+        "registry_id": "",
+        "signer_address": ""
+    }
 }
 ```
 
@@ -233,8 +277,11 @@ Edit `config.json` to customize the agent:
 | `organized_folder` | Destination for organized files | `~/Downloads/Organized` |
 | `scan_interval_seconds` | How often to check for new files | `60` |
 | `upload_batch_size` | Actions before Walrus upload | `100` |
-| `check_duplicates` | Enable SHA256 duplicate detection | `true` |
-| `rename_pattern` | Timestamp pattern for new filenames | `YYYYMMDD_HHMMSS` |
+| `check_duplicates` | Enable SHA-256 duplicate detection | `true` |
+| `vault.enabled` | Enable encrypted vault storage | `true` |
+| `vault.epochs` | Walrus storage epochs for vault files | `10` |
+| `workflows.enabled` | Enable OCR-based automation rules | `true` |
+| `sui_anchor.package_id` | Deployed Move contract package ID (leave empty for local ledger) | `""` |
 
 ---
 
@@ -307,6 +354,9 @@ Deepurge includes a **modern dark-themed web dashboard** with a built-in **Contr
 | 🔍 **Blob Explorer** | Paste any Walrus blob ID or URL to view the data in a friendly table |
 | 📜 **Upload History** | Browse every batch, report & session the agent has uploaded |
 | ⚡ **Live Feed** | Auto-refreshing activity feed straight from the local database |
+| 🔐 **Vault** | Upload/download encrypted files, folder sync, shareable link generator |
+| ⚙️ **Workflows** | Manage IF→THEN automation rules, view execution log, conversion tools |
+| ⚓ **Sui Anchor** | View anchored hashes, verify integrity, browse anchor history |
 
 ### Quick Start (no Docker)
 
@@ -353,6 +403,111 @@ The dashboard will fetch the data from Walrus and display all 100 file actions i
 
 ---
 
+## 🔐 Vault — Encrypted Walrus Storage
+
+The Deepurge Vault encrypts files locally with **AES-256-GCM** before uploading to Walrus. The decryption key never touches the network.
+
+### How It Works
+
+1. **Encrypt** — file is encrypted client-side with a 256-bit random key
+2. **Upload** — only the ciphertext is sent to Walrus
+3. **Share** — a URL-safe link encodes `blob_id + key + nonce` in the URL fragment (`#`), which is never sent to the server
+4. **Decrypt** — recipient opens the link, the dashboard downloads ciphertext and decrypts in-browser
+
+### Share Link Anatomy
+
+```
+http://localhost:5050/vault/share#eyJiIjoiYmxvYl8xMjM...
+                                  └── base64({ blob_id, key, nonce, filename })
+                                      ↑ URL fragment — never sent to server
+```
+
+### Folder Sync
+
+Encrypt and upload an entire folder with a single key. A root hash (SHA-256 of all file hashes) is computed for integrity verification.
+
+---
+
+## ⚙️ Workflows — Automation Engine
+
+OCR-powered IF→THEN rules that fire automatically when the agent processes a file.
+
+### Built-in Rules
+
+| Rule | Trigger | Actions |
+|------|---------|---------|
+| **Expenses Trigger** | Content matches `total due`, `invoice total`, etc. | Move to `Expenses/`, tag `expense`, Walrus backup |
+| **Receipt Auto-Save** | Content matches `receipt`, `payment received`, etc. | Move to `Receipts/`, Walrus backup |
+| **Auto-Unzip Archives** | Extension is `.zip` | Extract to folder |
+| **Screenshot to PDF** | Filename matches `screenshot`, `snip`, etc. | Convert PNG→PDF *(disabled by default)* |
+
+### Custom Rules
+
+Add rules via the dashboard or API:
+
+```json
+{
+    "name": "Tax Documents",
+    "trigger_type": "content_match",
+    "trigger_value": "w-2|1099|tax\\s*return",
+    "actions": [
+        {"type": "move", "destination": "Taxes"},
+        {"type": "walrus_backup", "value": "true"}
+    ],
+    "enabled": true
+}
+```
+
+### Supported Actions
+
+| Action | Description |
+|--------|-------------|
+| `move` | Move file to a named subfolder |
+| `tag` | Tag with a label (logged in DB) |
+| `walrus_backup` | Encrypt and upload to Vault |
+| `unzip` | Extract ZIP archive |
+| `convert_to_pdf` | Convert image to PDF |
+
+---
+
+## ⚓ Sui Anchor — On-Chain Integrity
+
+Each daily report's SHA-256 root hash is anchored on the Sui blockchain, creating a tamper-proof audit trail.
+
+### Move Smart Contract
+
+```move
+module deepurge_anchor::deepurge_anchor {
+    public struct Registry has key {
+        id: UID,
+        owner: address,
+        entries: Table<vector<u8>, vector<u8>>,  // date → root_hash
+        anchor_count: u64,
+    }
+
+    public entry fun anchor_report(
+        registry: &mut Registry,
+        date: vector<u8>,
+        root_hash: vector<u8>,
+        ctx: &mut TxContext,
+    ) { /* ... */ }
+}
+```
+
+### Verification
+
+Anyone can verify that a daily report hasn't been tampered with:
+
+1. Open the **Sui Anchor** tab in the dashboard
+2. Enter the report date and root hash
+3. The system checks against the on-chain record (or local ledger)
+
+### Fallback Mode
+
+When no Move contract is deployed (i.e. `package_id` is empty), anchors are stored in a local JSON ledger (`anchor_ledger.json`). This allows the full workflow to function during development and testing.
+
+---
+
 ## 🎬 Demo Video
 
 > 🎥 Video demonstration coming soon! In the meantime, check out the [Screenshots](#-screenshots) above.
@@ -392,15 +547,15 @@ python demo_generator.py ~/Downloads 50
 
 🔍 Scanning existing files...
 
-✅ Moved: vacation_photo.jpg
-   Category: Images
-   Size: 2.5 MB
-   New name: 20260209_153045_vacation_photo.jpg
-
-✅ Moved: report.pdf
-   Category: Documents
+✅ Moved: invoice_9921.pdf
+   Category: Documents (Financial)
    Size: 156.2 KB
-   New name: 20260209_153046_report.pdf
+   New name: 20260212_Financial_Invoice_invoice_9921.pdf
+
+✅ Moved: desktop_screenshot.png
+   Category: Images (Screenshots)
+   Size: 2.5 MB
+   New name: 20260212_Screenshots_desktop_screenshot.png
 
 📤 Uploaded 100 actions to Walrus
    Blob ID: 7Xk9...abc123
@@ -415,35 +570,38 @@ python demo_generator.py ~/Downloads 50
 
 ```
 deepurge-autoclean-agent/
-├── 📄 agent.py              # Main agent – file monitoring, organizing & Walrus uploads
-├── 📄 classifier.py         # File classification by extension
-├── 📄 database.py           # SQLite operations & statistics
+├── 📄 agent.py              # Main agent – monitoring, organizing, workflows & Walrus uploads
+├── 📄 classifier.py         # File classification by extension + Deep Intelligence
+├── 📄 intelligence.py       # OCR/text extraction and image analysis for smart sorting
+├── 📄 database.py           # SQLite operations (actions, vault, workflows, anchors)
 ├── 📄 walrus_logger.py      # Walrus decentralized storage integration
+├── 📄 vault.py              # [Path 2] AES-256-GCM encrypted file storage on Walrus
+├── 📄 workflows.py          # [Path 3] OCR triggers, IF→THEN rules, file conversion
+├── 📄 sui_anchor.py         # [Path 3] On-chain root hash anchoring via Sui JSON-RPC
 ├── 📄 demo_generator.py     # Generate test files across categories
-├── 📄 config.json           # Local configuration (watch ~/Downloads)
+├── 📄 config.json           # Agent configuration (all features)
 ├── 📄 config.docker.json    # Docker configuration (watch /data/Downloads)
-├── 📄 requirements.txt      # Agent Python dependencies
+├── 📄 requirements.txt      # Python dependencies
 ├── 📄 install.bat           # Windows installer
 ├── 📄 run.bat               # Start agent script
 ├── 📄 demo.bat              # Demo file generator script
 ├── 📄 dashboard.bat         # Dashboard launcher (local)
 ├── 📄 Dockerfile.dashboard  # Full-stack Docker image (agent + dashboard)
 ├── 📄 docker-compose.yml    # Docker Compose – mounts real Downloads folder
-├── 📄 .dockerignore         # Docker build exclusions
-├── 📁 img/                  # Screenshots for README
-│   ├── 🖼️ after agent download folder.png
-│   ├── 🖼️ downloads folder with information.png
-│   ├── 🖼️ in progress agent done.png
-│   ├── 🖼️ in progress agent.png
-│   └── 🖼️ in progress running agent.png
-├── 📁 dashboard/            # Web dashboard + Control Panel
-│   ├── 📄 app.py            # Flask backend + ProcessManager (agent controller)
+├── 📁 contracts/            # Sui Move smart contract
+│   └── 📁 deepurge_anchor/
+│       ├── 📄 Move.toml
+│       └── 📁 sources/
+│           └── 📄 deepurge_anchor.move   # On-chain date→hash registry
+├── 📁 dashboard/            # Web dashboard + Control Panel (8 views)
+│   ├── 📄 app.py            # Flask backend + Vault/Workflow/Anchor APIs
 │   ├── 📄 requirements.txt  # Dashboard dependencies
 │   ├── 📁 templates/
-│   │   └── 📄 index.html    # Main dashboard page (5 views)
+│   │   └── 📄 index.html    # Main dashboard page (8 views)
 │   └── 📁 static/
-│       ├── 📁 css/style.css  # Dark theme stylesheet
-│       └── 📁 js/app.js      # Frontend logic + agent control
+│       ├── 📁 css/style.css  # Dark theme stylesheet (vault, workflow, anchor styles)
+│       └── 📁 js/app.js      # Frontend logic + vault/workflow/anchor interactions
+├── 📁 img/                  # Screenshots for README
 ├── 📄 README.md             # This file
 └── 📄 .gitignore            # Git ignore rules
 ```
@@ -500,25 +658,29 @@ MIT License - feel free to use this project for any purpose.
 
 ## 🏆 Built for x OpenClaw Agent Hackathon
 
-This project demonstrates integration with:
+This project demonstrates deep integration with:
 
-- **Walrus Storage** - Decentralized blob storage on Sui
-- **Sui Network** - Layer 1 blockchain foundation
-- **Python Ecosystem** - Modern file monitoring and processing
-- **Web Dashboard** - Containerized Walrus blob viewer
+- **Walrus Storage** — Decentralized blob storage on Sui (action logs, encrypted vault, reports)
+- **Sui Network** — Layer 1 blockchain with Move smart contract for on-chain anchoring
+- **AES-256-GCM** — Client-side encryption for vault storage (key never leaves the client)
+- **Python Ecosystem** — Watchdog, PyMuPDF, Pillow, Flask
+- **Web Dashboard** — 8-view dark-themed UI with full vault, workflow, and anchor management
 
 ### Hackathon Requirements Met
 
 ✅ Monitor Downloads folder (real filesystem via Docker volumes)  
-✅ Classify files automatically into 7 categories  
-✅ Move & rename to organized folders with timestamps  
+✅ Classify files automatically into 7 categories with intelligent sub-categories  
+✅ Move & rename to organized folders with smart timestamps  
 ✅ Log all actions to Walrus decentralized storage  
 ✅ Web dashboard with stat cards, charts & Walrus blob explorer  
 ✅ Control Panel UI to start/stop agent & generate demo files  
 ✅ Full-stack Docker containerization (agent + dashboard)  
+✅ **Path 2: Vault** — AES-256-GCM encrypted file storage on Walrus with shareable links  
+✅ **Path 3: Flow** — OCR-based automation workflows + Sui on-chain root hash anchoring  
+✅ Move smart contract for tamper-proof daily report integrity  
 ✅ README with author name, screenshots & documentation  
-✅ Clean, documented code  
-✅ Demo file generator  
+✅ Clean, documented, modular code  
+✅ Demo file generator with intelligence triggers  
 ✅ Windows 11 compatible  
 
 ---

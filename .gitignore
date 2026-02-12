@@ -58,6 +58,17 @@ desktop.ini
 # Test files
 test_*.db
 
+# Vault temp files
+_vault_tmp/
+_vault_test.txt
+_test_convert.*
+
+# Anchor local ledger (runtime artifact)
+anchor_ledger.json
+
+# Blob history (runtime artifact)
+blob_history.json
+
 # Organized folder (don't track organized files)
 Organized/
 sui-stack-claude-code-plugin/

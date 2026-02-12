@@ -70,11 +70,11 @@ class DemoFileGenerator:
     
     # Sample content for text files
     TEXT_CONTENT = [
-        "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
-        "The quick brown fox jumps over the lazy dog.",
-        "This is a sample document created for testing purposes.",
+        "INVOICE #2026-001 - Total Due: $1,250.00. Please pay by next Friday.",
+        "RESUME / CURRICULUM VITAE - Senior Software Engineer with 10 years experience.",
+        "RESEARCH PAPER: Decentralized Storage Protocols on Sui Blockchain.",
+        "MUTUAL NON-DISCLOSURE AGREEMENT - This legal contract defines terms of privacy.",
         "Deepurge AutoClean Agent - File Organization Demo",
-        "Sui Hackathon 2026 - Samuel Campozano Lopez",
         "Walrus decentralized storage integration test file.",
     ]
     
@@ -195,7 +195,12 @@ h1 {
                 with open(filepath, 'w', encoding='utf-8') as f:
                     f.write(content)
             else:  # text
-                content = self._generate_text_content()
+                # Force some intelligence triggers for documents
+                if category == "Documents" and index % 2 == 0:
+                    content = random.choice(self.TEXT_CONTENT[:4]) # Pick from the triggers
+                else:
+                    content = self._generate_text_content()
+                    
                 with open(filepath, 'w', encoding='utf-8') as f:
                     f.write(content)
             

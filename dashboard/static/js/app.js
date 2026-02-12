@@ -54,6 +54,9 @@ $$(".nav-item").forEach((item) => {
         // Refresh data when switching to dashboard
         if (view === "dashboard") loadDashboardData();
         if (view === "history") loadHistory();
+        if (view === "vault") { loadVaultFiles(); }
+        if (view === "workflows") { loadWorkflowRules(); loadWorkflowExecutions(); }
+        if (view === "anchors") { loadAnchors(); }
     });
 });
 
@@ -473,6 +476,366 @@ async function loadLiveFeed() {
 
 
 // ═══════════════════════════════════════════════════════════
+//  VAULT (Path 2)
+// ═══════════════════════════════════════════════════════════
+
+let vaultSelectedFile = null;
+
+// File input
+if ($("#vaultFileInput")) {
+    $("#vaultFileInput").addEventListener("change", (e) => {
+        vaultSelectedFile = e.target.files[0];
+        if (vaultSelectedFile) {
+            $("#vaultDropzone").querySelector("p").textContent = `Selected: ${vaultSelectedFile.name} (${formatBytes(vaultSelectedFile.size)})`;
+            $("#btnVaultUpload").disabled = false;
+        }
+    });
+}
+
+// Dropzone
+if ($("#vaultDropzone")) {
+    const dz = $("#vaultDropzone");
+    dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("dragover"); });
+    dz.addEventListener("dragleave", () => dz.classList.remove("dragover"));
+    dz.addEventListener("drop", (e) => {
+        e.preventDefault(); dz.classList.remove("dragover");
+        if (e.dataTransfer.files.length) {
+            vaultSelectedFile = e.dataTransfer.files[0];
+            dz.querySelector("p").textContent = `Selected: ${vaultSelectedFile.name} (${formatBytes(vaultSelectedFile.size)})`;
+            $("#btnVaultUpload").disabled = false;
+        }
+    });
+}
+
+// Upload
+if ($("#btnVaultUpload")) {
+    $("#btnVaultUpload").addEventListener("click", async () => {
+        if (!vaultSelectedFile) return;
+        $("#btnVaultUpload").disabled = true;
+        $("#btnVaultUpload").textContent = "⏳ Encrypting & Uploading…";
+        const formData = new FormData();
+        formData.append("file", vaultSelectedFile);
+        try {
+            const resp = await fetch("/api/vault/upload", { method: "POST", body: formData });
+            const data = await resp.json();
+            if (data.error) { alert("Vault error: " + data.error); return; }
+            // Show result
+            $("#vaultResult").classList.remove("hidden");
+            $("#vaultBlobId").textContent = data.blob_id || "–";
+            $("#vaultSha256").textContent = (data.sha256 || "–").slice(0, 32) + "…";
+            $("#vaultEncSize").textContent = formatBytes(data.encrypted_size || 0);
+            $("#vaultKeyHex").textContent = data.key_hex || "–";
+            $("#vaultShareLink").value = data.share_link || "";
+            loadVaultFiles();
+        } catch (err) {
+            alert("Upload failed: " + err.message);
+        } finally {
+            $("#btnVaultUpload").disabled = false;
+            $("#btnVaultUpload").textContent = "🔒 Encrypt & Upload to Walrus";
+        }
+    });
+}
+
+// Copy share link
+if ($("#btnCopyShareLink")) {
+    $("#btnCopyShareLink").addEventListener("click", () => {
+        const link = $("#vaultShareLink").value;
+        navigator.clipboard.writeText(link).then(() => {
+            $("#btnCopyShareLink").textContent = "✅ Copied!";
+            setTimeout(() => { $("#btnCopyShareLink").textContent = "📋 Copy"; }, 2000);
+        });
+    });
+}
+
+// Folder sync
+if ($("#btnVaultSyncFolder")) {
+    $("#btnVaultSyncFolder").addEventListener("click", async () => {
+        const fp = $("#vaultFolderPath").value.trim();
+        if (!fp) return;
+        $("#btnVaultSyncFolder").disabled = true;
+        $("#btnVaultSyncFolder").textContent = "⏳ Syncing…";
+        try {
+            const resp = await fetch("/api/vault/upload-folder", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ folder_path: fp }),
+            });
+            const data = await resp.json();
+            if (data.error) { alert("Error: " + data.error); return; }
+            $("#vaultFolderResult").classList.remove("hidden");
+            $("#vaultFolderSummary").innerHTML = `✅ Synced <strong>${data.file_count}</strong> files from <strong>${data.folder_name}</strong><br>Root Hash: <code>${(data.root_hash || "").slice(0, 32)}…</code><br>Key: <code class="key-blur">${(data.key_hex || "").slice(0, 24)}…</code>`;
+        } catch (err) {
+            alert("Sync failed: " + err.message);
+        } finally {
+            $("#btnVaultSyncFolder").disabled = false;
+            $("#btnVaultSyncFolder").textContent = "🔄 Sync Folder";
+        }
+    });
+}
+
+// Decrypt & download
+if ($("#btnVaultDecrypt")) {
+    $("#btnVaultDecrypt").addEventListener("click", async () => {
+        let input = ($("#vaultDecryptInput").value || "").trim();
+        let keyHex = ($("#vaultDecryptKey").value || "").trim();
+        let blobId = "", nonceHex = "", fileName = "downloaded_file";
+
+        // Try parsing as share link / token
+        if (input.includes("#")) {
+            const token = input.split("#").pop();
+            try {
+                const decoded = JSON.parse(atob(token.replace(/-/g,"+").replace(/_/g,"/")));
+                blobId = decoded.b;
+                keyHex = decoded.k;
+                nonceHex = decoded.n;
+                fileName = decoded.f || fileName;
+            } catch(e) { blobId = input; }
+        } else {
+            blobId = input;
+        }
+
+        if (!blobId || !keyHex) { alert("Enter a share link or blob ID + key"); return; }
+        // If nonce not extracted from token, try getting from vault files table
+        if (!nonceHex) { alert("Nonce not found. Use a full share link."); return; }
+
+        try {
+            const resp = await fetch("/api/vault/download", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ blob_id: blobId, key_hex: keyHex, nonce_hex: nonceHex, file_name: fileName }),
+            });
+            if (!resp.ok) { const err = await resp.json(); alert(err.error); return; }
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url; a.download = fileName; a.click();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            alert("Decrypt failed: " + err.message);
+        }
+    });
+}
+
+async function loadVaultFiles() {
+    try {
+        const resp = await fetch("/api/vault/files");
+        const data = await resp.json();
+        const files = data.files || [];
+        const tbody = $("#vaultFilesTable tbody");
+        if (!files.length) {
+            tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:24px;">No vault files yet.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = files.map(f => `<tr>
+            <td>${formatTime(f.timestamp)}</td>
+            <td>${f.file_name || "–"}</td>
+            <td>${formatBytes(f.file_size || 0)}</td>
+            <td class="blob-id-cell" title="${f.blob_id}">${shortBlob(f.blob_id)}</td>
+            <td>
+                <button class="btn btn-explore" onclick="copyVaultShare('${f.blob_id}','${f.key_hex}','${f.nonce_hex}','${(f.file_name||"").replace(/'/g,"\\'")}')">🔗 Share</button>
+            </td>
+        </tr>`).join("");
+    } catch(e) { console.error("Vault files error:", e); }
+}
+
+function copyVaultShare(blobId, keyHex, nonceHex, fileName) {
+    const payload = JSON.stringify({b:blobId,k:keyHex,n:nonceHex,f:fileName});
+    const token = btoa(payload).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+    const link = `${location.origin}/vault/share#${token}`;
+    navigator.clipboard.writeText(link).then(() => alert("Share link copied!"));
+}
+
+// Check if we arrived via a share link
+function checkShareLink() {
+    if (location.hash && location.pathname.includes("/vault/share")) {
+        const token = location.hash.slice(1);
+        try {
+            const decoded = JSON.parse(atob(token.replace(/-/g,"+").replace(/_/g,"/")));
+            // Switch to vault view
+            $$(".nav-item").forEach(n => n.classList.remove("active"));
+            document.querySelector('[data-view="vault"]').classList.add("active");
+            $$(".view").forEach(v => v.classList.remove("active"));
+            $("#view-vault").classList.add("active");
+            $("#viewTitle").textContent = "🔐 Vault";
+            // Fill decrypt fields
+            $("#vaultDecryptInput").value = location.href;
+            $("#vaultDecryptKey").value = decoded.k;
+        } catch(e) {}
+    }
+}
+
+
+// ═══════════════════════════════════════════════════════════
+//  WORKFLOWS (Path 3)
+// ═══════════════════════════════════════════════════════════
+
+async function loadWorkflowRules() {
+    try {
+        const resp = await fetch("/api/workflows/rules");
+        const data = await resp.json();
+        const rules = data.rules || [];
+        const list = $("#wfRulesList");
+        if (!rules.length) {
+            list.innerHTML = '<p style="color:var(--text-muted);padding:16px;">No rules configured.</p>';
+            return;
+        }
+        list.innerHTML = rules.map(r => {
+            const status = r.enabled ? "✅" : "⏸️";
+            const actionsText = r.actions.map(a => `${a.type}${a.destination ? ":" + a.destination : a.value ? ":" + a.value : ""}`).join(", ");
+            return `<div class="wf-rule-card">
+                <div class="wf-rule-header">
+                    <span class="wf-rule-status">${status}</span>
+                    <strong>${r.name}</strong>
+                    <span class="wf-rule-type">${r.trigger_type}</span>
+                </div>
+                <div class="wf-rule-body">
+                    <span class="wf-rule-trigger">IF: <code>${r.trigger_value}</code></span>
+                    <span class="wf-rule-actions">THEN: ${actionsText}</span>
+                </div>
+                <div class="wf-rule-actions-btns">
+                    <button class="btn btn-sm btn-outline" onclick="toggleWfRule('${r.name}', ${!r.enabled})">${r.enabled ? '⏸️ Disable' : '▶ Enable'}</button>
+                    <button class="btn btn-sm btn-outline" style="color:var(--accent-red)" onclick="deleteWfRule('${r.name}')">🗑️ Delete</button>
+                </div>
+            </div>`;
+        }).join("");
+    } catch(e) { console.error("Rules error:", e); }
+}
+
+async function toggleWfRule(name, enabled) {
+    await fetch(`/api/workflows/rules/${encodeURIComponent(name)}/toggle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+    });
+    loadWorkflowRules();
+}
+
+async function deleteWfRule(name) {
+    if (!confirm(`Delete rule "${name}"?`)) return;
+    await fetch(`/api/workflows/rules/${encodeURIComponent(name)}`, { method: "DELETE" });
+    loadWorkflowRules();
+}
+
+if ($("#btnWfAddRule")) {
+    $("#btnWfAddRule").addEventListener("click", async () => {
+        const name = ($("#wfRuleName").value || "").trim();
+        const triggerType = $("#wfTriggerType").value;
+        const triggerValue = ($("#wfTriggerValue").value || "").trim();
+        const actionsRaw = ($("#wfActions").value || "").trim();
+
+        if (!name || !triggerValue || !actionsRaw) { alert("Fill all fields"); return; }
+
+        const actions = actionsRaw.split(",").map(a => {
+            const parts = a.trim().split(":");
+            const action = { type: parts[0].trim() };
+            if (parts[1]) {
+                if (parts[0].trim() === "move") action.destination = parts[1].trim();
+                else action.value = parts[1].trim();
+            }
+            return action;
+        });
+
+        try {
+            await fetch("/api/workflows/rules", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, trigger_type: triggerType, trigger_value: triggerValue, actions, enabled: true }),
+            });
+            loadWorkflowRules();
+            // Clear form
+            $("#wfRuleName").value = "";
+            $("#wfTriggerValue").value = "";
+            $("#wfActions").value = "";
+        } catch(e) { alert(e.message); }
+    });
+}
+
+async function loadWorkflowExecutions() {
+    try {
+        const resp = await fetch("/api/workflows/executions");
+        const data = await resp.json();
+        const execs = data.executions || [];
+        const list = $("#wfExecutionLog");
+        if (!execs.length) {
+            list.innerHTML = '<p style="color:var(--text-muted);padding:16px;">No workflow executions yet.</p>';
+            return;
+        }
+        list.innerHTML = execs.map(e => {
+            const actions = e.actions_taken ? JSON.parse(e.actions_taken) : [];
+            const actText = actions.map(a => `${a.type}: ${a.status}`).join(", ");
+            return `<div class="activity-item">
+                <span class="activity-emoji">⚡</span>
+                <div class="activity-body">
+                    <div class="activity-file">${e.file_name} → ${e.rule_name}</div>
+                    <div class="activity-meta">${actText} · ${formatTime(e.timestamp)}</div>
+                </div>
+                <span class="activity-badge badge-moved">${e.status}</span>
+            </div>`;
+        }).join("");
+    } catch(e) { console.error("Executions error:", e); }
+}
+
+
+// ═══════════════════════════════════════════════════════════
+//  SUI ANCHOR (Path 3)
+// ═══════════════════════════════════════════════════════════
+
+async function loadAnchors() {
+    try {
+        const resp = await fetch("/api/anchors");
+        const data = await resp.json();
+        const anchors = data.anchors || [];
+
+        // Stats
+        $("#anchorCount").textContent = anchors.length;
+        if (anchors.length > 0) {
+            const latest = anchors[0];
+            $("#anchorLatestDate").textContent = latest.date || "–";
+            $("#anchorSource").textContent = latest.source || "local";
+        }
+
+        // Table
+        const tbody = $("#anchorTable tbody");
+        if (!anchors.length) {
+            tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:24px;">No anchors yet. Run the agent to generate daily reports.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = anchors.map(a => `<tr>
+            <td>${a.date || "–"}</td>
+            <td class="blob-id-cell" title="${a.root_hash}">${(a.root_hash || "–").slice(0,24)}…</td>
+            <td>${a.source || "–"}</td>
+            <td class="blob-id-cell">${a.tx_digest || "–"}</td>
+            <td>${formatTime(a.anchored_at)}</td>
+        </tr>`).join("");
+    } catch(e) { console.error("Anchors error:", e); }
+}
+
+if ($("#btnAnchorVerify")) {
+    $("#btnAnchorVerify").addEventListener("click", async () => {
+        const date = ($("#anchorVerifyDate").value || "").trim();
+        const hash = ($("#anchorVerifyHash").value || "").trim();
+        if (!date || !hash) { alert("Enter date and root hash"); return; }
+
+        try {
+            const resp = await fetch("/api/anchors/verify", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ date, root_hash: hash }),
+            });
+            const result = await resp.json();
+            const el = $("#anchorVerifyResult");
+            el.classList.remove("hidden");
+            if (result.verified) {
+                el.innerHTML = `<div class="anchor-verified">✅ <strong>Verified!</strong> Root hash matches the ${result.source || "local"} record.</div>`;
+            } else {
+                el.innerHTML = `<div class="anchor-failed">❌ <strong>Mismatch!</strong> ${result.reason || "Hash does not match."}</div>`;
+            }
+        } catch(e) { alert(e.message); }
+    });
+}
+
+
+// ═══════════════════════════════════════════════════════════
 //  BOOT
 // ═══════════════════════════════════════════════════════════
 
@@ -480,6 +843,11 @@ document.addEventListener("DOMContentLoaded", () => {
     pollAgentStatus();
     loadDashboardData();
     loadHistory();
+    loadVaultFiles();
+    loadWorkflowRules();
+    loadWorkflowExecutions();
+    loadAnchors();
+    checkShareLink();
     // Poll agent status every 3s
     setInterval(pollAgentStatus, 3000);
 });

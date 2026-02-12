@@ -10,6 +10,8 @@ import hashlib
 from pathlib import Path
 from typing import Optional, Dict, List, Tuple
 
+from intelligence import DeepIntelligence
+
 
 class FileClassifier:
     """Classifies files into categories based on file extensions"""
@@ -84,6 +86,17 @@ class FileClassifier:
         category = self.classify(file_path)
         return base_folder / category
     
+    def get_smart_destination(self, file_path: Path, base_folder: Path, intelligence: Dict) -> Path:
+        """
+        Get a smart destination folder based on content intelligence.
+        """
+        category = self.classify(file_path)
+        sub_category = intelligence.get("sub_category", "General")
+        
+        if sub_category != "General":
+            return base_folder / category / sub_category
+        return base_folder / category
+
     def get_all_categories(self) -> List[str]:
         """Return all available categories"""
         return list(self.categories.keys())
@@ -130,24 +143,30 @@ class FileClassifier:
     
     def analyze_file(self, file_path: Path) -> Dict:
         """
-        Analyze a file and return detailed information
+        Analyze a file and return detailed information with Deep Intelligence.
         
         Args:
             file_path: Path to the file
             
         Returns:
-            Dictionary with file analysis
+            Dictionary with file analysis and intelligence
         """
         path = Path(file_path)
+        category = self.classify(path)
         
         analysis = {
             "name": path.name,
             "stem": path.stem,
             "extension": path.suffix.lower(),
-            "category": self.classify(path),
+            "category": category,
             "size": 0,
             "hash": None,
-            "exists": path.exists()
+            "exists": path.exists(),
+            "intelligence": {
+                "sub_category": "General",
+                "keywords": [],
+                "preview": ""
+            }
         }
         
         if path.exists():
@@ -155,6 +174,15 @@ class FileClassifier:
                 stat = path.stat()
                 analysis["size"] = stat.st_size
                 analysis["hash"] = self.compute_file_hash(path)
+                
+                # Apply Deep Intelligence based on category
+                if category == "Documents":
+                    intel = DeepIntelligence.analyze_document(path)
+                    analysis["intelligence"] = intel
+                elif category == "Images":
+                    intel = DeepIntelligence.analyze_image(path)
+                    analysis["intelligence"] = intel
+                
             except (IOError, PermissionError):
                 pass
         
