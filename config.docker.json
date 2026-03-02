@@ -2,15 +2,15 @@
     "agent_name": "Deepurge AutoClean Agent",
     "version": "1.0.0",
     "author": "Samuel Campozano Lopez",
-    
+
     "folders": {
         "watch_folder": "/data/Downloads",
         "organized_folder": "/data/Organized"
     },
-    
+
     "scan_interval_seconds": 60,
     "min_file_age_seconds": 5,
-    
+
     "categories": {
         "Images": [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp", ".ico", ".tiff"],
         "Documents": [".pdf", ".docx", ".doc", ".txt", ".md", ".xlsx", ".xls", ".pptx", ".ppt", ".odt", ".rtf", ".csv"],
@@ -21,15 +21,53 @@
         "Executables": [".exe", ".msi", ".bat", ".cmd", ".ps1", ".sh"],
         "Other": []
     },
-    
+
     "ignore_patterns": [".tmp", ".crdownload", ".partial", "~$", ".download"],
-    
+
     "walrus": {
         "enabled": true,
         "network": "testnet",
         "aggregator_url": "https://aggregator.walrus-testnet.walrus.space",
         "publisher_url": "https://publisher.walrus-testnet.walrus.space",
-        "batch_upload_threshold": 100,
-        "daily_report": true
+        "upload_batch_size": 100,
+        "epochs": 5
+    },
+
+    "database": {
+        "path": "actions.db"
+    },
+
+    "logging": {
+        "file": "agent.log",
+        "level": "INFO",
+        "max_size_mb": 10,
+        "backup_count": 3
+    },
+
+    "rename_pattern": "YYYYMMDD_HHMMSS",
+    "check_duplicates": true,
+    "auto_start": true,
+    "retry_attempts": 3,
+    "retry_delay_seconds": 5,
+
+    "vault": {
+        "enabled": true,
+        "epochs": 10,
+        "auto_backup_on_workflow": true
+    },
+
+    "workflows": {
+        "enabled": true,
+        "auto_unzip": true,
+        "screenshot_to_pdf": false,
+        "rules": []
+    },
+
+    "sui_anchor": {
+        "enabled": true,
+        "rpc_url": "https://fullnode.testnet.sui.io:443",
+        "package_id": "0x9347b087370be9ddda2caad8dfcef4db4500a62c3505691925b5890f9830ee9a",
+        "registry_id": "0x95f511bb8ae5b2831c381bcb1aa849ab84f99e839a6a6b88c2e62830f408ea1d",
+        "signer_address": "0xf64afb55d7f67645d7542ab066a43b17f309c53c4d083dab1af7629b5007f413"
     }
 }

@@ -18,6 +18,7 @@ import json
 import random
 import string
 from pathlib import Path
+from typing import Optional
 from datetime import datetime, timedelta
 from colorama import init, Fore, Style
 

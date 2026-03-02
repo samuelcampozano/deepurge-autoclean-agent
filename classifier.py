@@ -178,10 +178,12 @@ class FileClassifier:
                 # Apply Deep Intelligence based on category
                 if category == "Documents":
                     intel = DeepIntelligence.analyze_document(path)
-                    analysis["intelligence"] = intel
+                    if intel:
+                        analysis["intelligence"] = intel
                 elif category == "Images":
                     intel = DeepIntelligence.analyze_image(path)
-                    analysis["intelligence"] = intel
+                    if intel:
+                        analysis["intelligence"] = intel
                 
             except (IOError, PermissionError):
                 pass

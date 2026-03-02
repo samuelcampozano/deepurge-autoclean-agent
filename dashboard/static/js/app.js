@@ -57,6 +57,7 @@ $$(".nav-item").forEach((item) => {
         if (view === "vault") { loadVaultFiles(); }
         if (view === "workflows") { loadWorkflowRules(); loadWorkflowExecutions(); }
         if (view === "anchors") { loadAnchors(); }
+        if (view === "organize") { initOrganizeView(); }
     });
 });
 
@@ -832,6 +833,500 @@ if ($("#btnAnchorVerify")) {
             }
         } catch(e) { alert(e.message); }
     });
+}
+
+
+// ═══════════════════════════════════════════════════════════
+//  ORGANIZE VIEW — Folder Browser + Organization Settings
+// ═══════════════════════════════════════════════════════════
+
+let organizeState = {
+    currentBrowsePath: "",
+    selectedFolder: "",
+    destFolder: "",
+    browsingDest: false,
+    renamePattern: "YYYYMMDD_HHMMSS",
+    logToWalrus: true,
+    categories: null, // null = use defaults from config
+};
+
+async function initOrganizeView() {
+    // Fetch the watch folder from config so we start at the right path
+    try {
+        const resp = await fetch("/api/organize/config");
+        const cfg = await resp.json();
+        const watchFolder = cfg.watch_folder || "";
+        const organizedFolder = cfg.organized_folder || "";
+        await browseTo(watchFolder);
+        // Pre-select watch folder as source and set destination
+        if (watchFolder) { selectSourceFolder(watchFolder); }
+        if (organizedFolder) { $("#destFolderInput").value = organizedFolder; }
+    } catch {
+        await browseTo("");
+    }
+    loadCategoriesEditor();
+}
+
+// ─── Folder Browser ─────────────────────────────────────────
+
+async function browseTo(path) {
+    const listEl = $("#folderList");
+    listEl.innerHTML = '<div class="folder-list-loading">Loading…</div>';
+
+    try {
+        const url = `/api/browse?path=${encodeURIComponent(path)}&files=true`;
+        const resp = await fetch(url);
+        const data = await resp.json();
+
+        if (data.error) {
+            listEl.innerHTML = `<div class="folder-list-error">❌ ${data.error}</div>`;
+            return;
+        }
+
+        organizeState.currentBrowsePath = data.path;
+        updateBreadcrumb(data.path, "folderBreadcrumb", false);
+
+        if (!data.items.length) {
+            listEl.innerHTML = '<div class="folder-list-empty">📭 Empty folder</div>';
+            return;
+        }
+
+        listEl.innerHTML = data.items.map(item => {
+            if (item.type === "drive") {
+                return `<div class="folder-item drive" onclick="browseTo('${escPath(item.path)}')">
+                    <span class="fi-icon">💿</span>
+                    <span class="fi-name">${item.name}</span>
+                </div>`;
+            }
+            if (item.type === "folder") {
+                return `<div class="folder-item dir" onclick="browseTo('${escPath(item.path)}')" ondblclick="selectSourceFolder('${escPath(item.path)}')">
+                    <span class="fi-icon">📁</span>
+                    <span class="fi-name">${item.name}</span>
+                    <span class="fi-arrow">→</span>
+                </div>`;
+            }
+            // file
+            const extColor = CATEGORY_COLORS[extensionToCategory(item.ext)] || CATEGORY_COLORS.Other;
+            return `<div class="folder-item file">
+                <span class="fi-icon" style="color:${extColor}">${extensionToEmoji(item.ext)}</span>
+                <span class="fi-name">${item.name}</span>
+                <span class="fi-size">${formatBytes(item.size)}</span>
+            </div>`;
+        }).join("");
+
+    } catch (err) {
+        listEl.innerHTML = `<div class="folder-list-error">❌ ${err.message}</div>`;
+    }
+}
+
+async function browseDestTo(path) {
+    const listEl = $("#destFolderList");
+    listEl.innerHTML = '<div class="folder-list-loading">Loading…</div>';
+
+    try {
+        const url = `/api/browse?path=${encodeURIComponent(path)}`;
+        const resp = await fetch(url);
+        const data = await resp.json();
+        if (data.error) { listEl.innerHTML = `<div class="folder-list-error">${data.error}</div>`; return; }
+
+        organizeState.destBrowsePath = data.path;
+        updateBreadcrumb(data.path, "destBreadcrumb", true);
+
+        listEl.innerHTML = data.items.filter(i => i.type === "drive" || i.type === "folder").map(item => {
+            const icon = item.type === "drive" ? "💿" : "📁";
+            return `<div class="folder-item dir" onclick="browseDestTo('${escPath(item.path)}')">
+                <span class="fi-icon">${icon}</span>
+                <span class="fi-name">${item.name}</span>
+                <span class="fi-arrow">→</span>
+            </div>`;
+        }).join("") || '<div class="folder-list-empty">📭 No subfolders</div>';
+
+        $("#destFolderInput").value = data.path;
+    } catch (err) {
+        listEl.innerHTML = `<div class="folder-list-error">${err.message}</div>`;
+    }
+}
+
+function escPath(p) { return p.replace(/\\/g, "\\\\").replace(/'/g, "\\'"); }
+
+function updateBreadcrumb(path, elementId, isDest) {
+    const el = $(`#${elementId}`);
+    const fn = isDest ? "browseDestTo" : "browseTo";
+    let html = `<span class="breadcrumb-item" onclick="${fn}('')">💻</span>`;
+
+    if (path) {
+        const sep = path.includes("\\") ? "\\" : "/";
+        const parts = path.split(sep).filter(Boolean);
+        let cumulative = "";
+        parts.forEach((part, i) => {
+            cumulative += part + sep;
+            const isLast = i === parts.length - 1;
+            html += `<span class="breadcrumb-sep">/</span>`;
+            html += `<span class="breadcrumb-item ${isLast ? 'active' : ''}" onclick="${fn}('${escPath(cumulative)}')">${part}</span>`;
+        });
+    }
+    el.innerHTML = html;
+}
+
+function extensionToCategory(ext) {
+    const map = {
+        ".jpg": "Images", ".jpeg": "Images", ".png": "Images", ".gif": "Images", ".webp": "Images", ".svg": "Images",
+        ".pdf": "Documents", ".docx": "Documents", ".doc": "Documents", ".txt": "Documents", ".xlsx": "Documents", ".csv": "Documents", ".md": "Documents",
+        ".mp4": "Videos", ".avi": "Videos", ".mov": "Videos", ".mkv": "Videos",
+        ".mp3": "Audio", ".wav": "Audio", ".flac": "Audio",
+        ".py": "Code", ".js": "Code", ".ts": "Code", ".html": "Code", ".css": "Code", ".json": "Code",
+        ".zip": "Archives", ".rar": "Archives", ".tar": "Archives", ".gz": "Archives",
+        ".exe": "Executables", ".msi": "Executables",
+    };
+    return map[ext] || "Other";
+}
+
+function extensionToEmoji(ext) {
+    const cat = extensionToCategory(ext);
+    return CATEGORY_EMOJI[cat] || "📎";
+}
+
+// Select source folder
+function selectSourceFolder(path) {
+    organizeState.selectedFolder = path;
+    $("#selectedFolderPath").textContent = path;
+    $("#folderSelectedBar").classList.add("selected");
+}
+
+if ($("#btnSelectFolder")) {
+    $("#btnSelectFolder").addEventListener("click", async () => {
+        const path = organizeState.currentBrowsePath;
+        if (!path) return;
+        selectSourceFolder(path);
+        await previewFolder(path);
+    });
+}
+
+async function previewFolder(path) {
+    // Show downstream panels
+    $("#folderPreviewPanel").classList.remove("hidden");
+    $("#destPanel").classList.remove("hidden");
+    $("#settingsPanel").classList.remove("hidden");
+    $("#executePanel").classList.remove("hidden");
+
+    // Set default destination
+    const sep = path.includes("\\") ? "\\" : "/";
+    const defaultDest = path + sep + "Organized";
+    $("#destFolderInput").value = defaultDest;
+    organizeState.destFolder = defaultDest;
+
+    // Load preview
+    $("#previewDesc").textContent = "Scanning folder contents…";
+    try {
+        const resp = await fetch(`/api/browse/preview?path=${encodeURIComponent(path)}`);
+        const data = await resp.json();
+        if (data.error) {
+            $("#previewDesc").textContent = `Error: ${data.error}`;
+            return;
+        }
+        $("#previewDesc").textContent = `Found ${data.total_files} files (${formatBytes(data.total_size)}) ready to organize:`;
+
+        const cats = data.categories;
+        const statsHtml = Object.entries(cats).map(([cat, count]) => {
+            const emoji = CATEGORY_EMOJI[cat] || "📎";
+            const color = CATEGORY_COLORS[cat] || CATEGORY_COLORS.Other;
+            return `<div class="stat-card" style="border-left: 3px solid ${color}">
+                <div class="stat-icon">${emoji}</div>
+                <div class="stat-body">
+                    <span class="stat-value">${count}</span>
+                    <span class="stat-label">${cat}</span>
+                </div>
+            </div>`;
+        }).join("");
+        $("#previewStats").innerHTML = statsHtml;
+
+        updateExecuteSummary();
+    } catch (err) {
+        $("#previewDesc").textContent = `Error scanning: ${err.message}`;
+    }
+}
+
+// Dest folder browser toggle
+if ($("#btnBrowseDest")) {
+    $("#btnBrowseDest").addEventListener("click", () => {
+        const container = $("#destBrowserContainer");
+        if (container.classList.contains("hidden")) {
+            container.classList.remove("hidden");
+            browseDestTo(organizeState.selectedFolder || "");
+        } else {
+            container.classList.add("hidden");
+        }
+    });
+}
+if ($("#btnConfirmDest")) {
+    $("#btnConfirmDest").addEventListener("click", () => {
+        organizeState.destFolder = organizeState.destBrowsePath || "";
+        $("#destFolderInput").value = organizeState.destFolder;
+        $("#destBrowserContainer").classList.add("hidden");
+        updateExecuteSummary();
+    });
+}
+if ($("#btnCancelDest")) {
+    $("#btnCancelDest").addEventListener("click", () => {
+        $("#destBrowserContainer").classList.add("hidden");
+    });
+}
+if ($("#destFolderInput")) {
+    $("#destFolderInput").addEventListener("input", (e) => {
+        organizeState.destFolder = e.target.value;
+        updateExecuteSummary();
+    });
+}
+
+// Rename options
+$$(".rename-option").forEach(opt => {
+    opt.addEventListener("click", () => {
+        $$(".rename-option").forEach(o => o.classList.remove("active"));
+        opt.classList.add("active");
+        organizeState.renamePattern = opt.querySelector("input").value;
+        updateExecuteSummary();
+    });
+});
+
+// Walrus toggle
+if ($("#walrusToggle")) {
+    $("#walrusToggle").addEventListener("change", (e) => {
+        organizeState.logToWalrus = e.target.checked;
+        updateExecuteSummary();
+    });
+}
+
+// ─── Categories Editor ────────────────────────────────────
+
+async function loadCategoriesEditor() {
+    try {
+        const resp = await fetch("/api/config");
+        const cfg = await resp.json();
+        const cats = cfg.categories || {};
+        organizeState.categories = { ...cats };
+        renderCategoriesEditor(cats);
+    } catch (e) {
+        console.error("Config load error:", e);
+    }
+}
+
+function renderCategoriesEditor(cats) {
+    const el = $("#categoriesEditor");
+    if (!el) return;
+
+    const catEmojis = { Images: "📸", Documents: "📄", Videos: "🎬", Audio: "🎵", Code: "💻", Archives: "📦", Executables: "⚙️", Other: "📎" };
+
+    el.innerHTML = Object.entries(cats).map(([name, exts]) => {
+        const emoji = catEmojis[name] || "🏷️";
+        const color = CATEGORY_COLORS[name] || CATEGORY_COLORS.Other;
+        const extTags = (exts || []).map(ext =>
+            `<span class="ext-tag" style="border-color:${color}" data-cat="${name}" data-ext="${ext}">${ext} <span class="ext-remove" onclick="removeExtension('${name}','${ext}')">×</span></span>`
+        ).join("");
+        return `<div class="category-card" style="border-left: 3px solid ${color}">
+            <div class="category-header">
+                <span class="category-emoji">${emoji}</span>
+                <span class="category-name">${name}</span>
+                <button class="btn btn-sm btn-outline" style="color:var(--accent-red);padding:2px 8px;font-size:.65rem;" onclick="removeCategory('${name}')">🗑️</button>
+            </div>
+            <div class="category-extensions">${extTags}</div>
+            <div class="category-add-ext">
+                <input type="text" class="input input-sm" placeholder="Add .ext" id="addExt_${name}" onkeydown="if(event.key==='Enter')addExtension('${name}')" />
+                <button class="btn btn-sm btn-outline" onclick="addExtension('${name}')">+</button>
+            </div>
+        </div>`;
+    }).join("");
+}
+
+function addExtension(category) {
+    const input = $(`#addExt_${category}`);
+    if (!input) return;
+    let ext = input.value.trim().toLowerCase();
+    if (!ext) return;
+    if (!ext.startsWith(".")) ext = "." + ext;
+
+    if (!organizeState.categories[category]) organizeState.categories[category] = [];
+    if (!organizeState.categories[category].includes(ext)) {
+        organizeState.categories[category].push(ext);
+    }
+    input.value = "";
+    renderCategoriesEditor(organizeState.categories);
+    saveCategoriesDebounced();
+}
+
+function removeExtension(category, ext) {
+    if (!organizeState.categories[category]) return;
+    organizeState.categories[category] = organizeState.categories[category].filter(e => e !== ext);
+    renderCategoriesEditor(organizeState.categories);
+    saveCategoriesDebounced();
+}
+
+function removeCategory(name) {
+    if (!confirm(`Remove category "${name}"?`)) return;
+    delete organizeState.categories[name];
+    renderCategoriesEditor(organizeState.categories);
+    saveCategoriesDebounced();
+}
+
+if ($("#btnAddCategory")) {
+    $("#btnAddCategory").addEventListener("click", () => {
+        const name = ($("#newCategoryName").value || "").trim();
+        const extsRaw = ($("#newCategoryExts").value || "").trim();
+        if (!name) { alert("Enter a category name"); return; }
+
+        const exts = extsRaw.split(",").map(e => {
+            let ext = e.trim().toLowerCase();
+            if (ext && !ext.startsWith(".")) ext = "." + ext;
+            return ext;
+        }).filter(Boolean);
+
+        organizeState.categories[name] = exts;
+        $("#newCategoryName").value = "";
+        $("#newCategoryExts").value = "";
+        renderCategoriesEditor(organizeState.categories);
+        saveCategoriesDebounced();
+    });
+}
+
+let _saveCatTimer = null;
+function saveCategoriesDebounced() {
+    clearTimeout(_saveCatTimer);
+    _saveCatTimer = setTimeout(async () => {
+        try {
+            await fetch("/api/config/categories", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ categories: organizeState.categories }),
+            });
+        } catch (e) { console.error("Save categories error:", e); }
+    }, 800);
+}
+
+// ─── Execute Summary ────────────────────────────────────────
+
+function updateExecuteSummary() {
+    const el = $("#executeSummary");
+    if (!el) return;
+
+    const src = organizeState.selectedFolder || "(not selected)";
+    const dst = organizeState.destFolder || "(auto)";
+    const pattern = organizeState.renamePattern;
+    const walrus = organizeState.logToWalrus ? "✅ Enabled" : "❌ Disabled";
+
+    el.innerHTML = `
+        <div class="summary-row"><span class="summary-label">📂 Source:</span> <span class="summary-value">${src}</span></div>
+        <div class="summary-row"><span class="summary-label">📦 Destination:</span> <span class="summary-value">${dst}</span></div>
+        <div class="summary-row"><span class="summary-label">📝 Naming:</span> <span class="summary-value">${pattern}</span></div>
+        <div class="summary-row"><span class="summary-label">🦭 Walrus Log:</span> <span class="summary-value">${walrus}</span></div>
+    `;
+}
+
+// ─── Preview & Execute ──────────────────────────────────────
+
+if ($("#btnPreviewOrganize")) {
+    $("#btnPreviewOrganize").addEventListener("click", async () => {
+        if (!organizeState.selectedFolder) { alert("Select a folder first"); return; }
+        await runOrganize(true);
+    });
+}
+
+if ($("#btnExecuteOrganize")) {
+    $("#btnExecuteOrganize").addEventListener("click", async () => {
+        if (!organizeState.selectedFolder) { alert("Select a folder first"); return; }
+        if (!confirm("This will move files into organized folders. Continue?")) return;
+        await runOrganize(false);
+    });
+}
+
+async function runOrganize(dryRun) {
+    const btn = dryRun ? $("#btnPreviewOrganize") : $("#btnExecuteOrganize");
+    const origText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "⏳ Working…";
+
+    try {
+        const payload = {
+            folder: organizeState.selectedFolder,
+            destination: organizeState.destFolder || "",
+            rename_pattern: organizeState.renamePattern,
+            log_to_walrus: organizeState.logToWalrus,
+            dry_run: dryRun,
+        };
+        if (organizeState.categories) {
+            payload.categories = organizeState.categories;
+        }
+
+        const resp = await fetch("/api/organize/run", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+
+        if (data.error) { alert("Error: " + data.error); return; }
+
+        // Show results
+        const resultsEl = $("#organizeResults");
+        resultsEl.classList.remove("hidden");
+
+        if (dryRun) {
+            $("#resultsTitle").textContent = "👁️ Preview — No files were moved";
+        } else {
+            $("#resultsTitle").textContent = `✅ Organized ${data.files_moved} files`;
+        }
+
+        // Stats
+        const statsHtml = `
+            <div class="stat-card accent-blue"><div class="stat-icon">📁</div><div class="stat-body"><span class="stat-value">${data.files_processed}</span><span class="stat-label">Files Scanned</span></div></div>
+            <div class="stat-card accent-green"><div class="stat-icon">✅</div><div class="stat-body"><span class="stat-value">${data.files_moved || 0}</span><span class="stat-label">${dryRun ? "Would Move" : "Moved"}</span></div></div>
+            <div class="stat-card accent-orange"><div class="stat-icon">💾</div><div class="stat-body"><span class="stat-value">${formatBytes(data.total_size || 0)}</span><span class="stat-label">Total Size</span></div></div>
+            <div class="stat-card accent-purple"><div class="stat-icon">📂</div><div class="stat-body"><span class="stat-value">${Object.keys(data.categories_summary || {}).length}</span><span class="stat-label">Categories</span></div></div>
+        `;
+        $("#resultsStats").innerHTML = statsHtml;
+
+        // Walrus result
+        if (data.walrus_blob_id) {
+            const walrusEl = $("#walrusResult");
+            walrusEl.classList.remove("hidden");
+            $("#walrusBlobResult").textContent = data.walrus_blob_id;
+            if ($("#btnExploreWalrusResult")) {
+                $("#btnExploreWalrusResult").onclick = () => exploreBlobFromHistory(data.walrus_blob_id);
+            }
+        } else {
+            $("#walrusResult").classList.add("hidden");
+        }
+
+        // Actions table
+        const actions = data.actions || [];
+        const tbody = $("#resultsTable tbody");
+        tbody.innerHTML = actions.map((a, i) => {
+            const cat = a.category || "–";
+            const emoji = CATEGORY_EMOJI[cat] || "📎";
+            const statusBadge = a.action === "error"
+                ? '<span class="activity-badge badge-error">ERROR</span>'
+                : a.action === "would_move"
+                ? '<span class="activity-badge badge-skipped">PREVIEW</span>'
+                : '<span class="activity-badge badge-moved">MOVED</span>';
+            return `<tr>
+                <td>${i + 1}</td>
+                <td>${emoji} ${a.file || "–"}</td>
+                <td>${cat}</td>
+                <td>${formatBytes(a.size || 0)}</td>
+                <td class="mono" style="font-size:.72rem;">${a.new_name || a.file || "–"}</td>
+                <td>${statusBadge}</td>
+            </tr>`;
+        }).join("");
+
+        // Refresh preview
+        if (!dryRun && organizeState.selectedFolder) {
+            await previewFolder(organizeState.selectedFolder);
+        }
+
+    } catch (err) {
+        alert("Failed: " + err.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = origText;
+    }
 }
 
 

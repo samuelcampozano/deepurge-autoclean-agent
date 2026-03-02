@@ -88,6 +88,12 @@ class DeepIntelligence:
         except Exception as e:
             print(f"⚠️ Intel Error (Img): {e}")
 
+        return {
+            "sub_category": sub_category,
+            "keywords": tags,
+            "preview": ""
+        }
+
     @staticmethod
     def get_smart_name(file_path: Path, intelligence: Dict) -> str:
         """Generates a descriptive name based on intelligence data."""

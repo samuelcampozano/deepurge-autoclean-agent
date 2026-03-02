@@ -2,6 +2,8 @@
 
 <div align="center">
 
+<img src="img/logo.svg" alt="Deepurge Logo" width="200">
+
 ![Deepurge Banner](https://img.shields.io/badge/x%20OpenClaw-Agent%20Hackathon-blue?style=for-the-badge)
 ![Python](https://img.shields.io/badge/Python-3.10+-green?style=for-the-badge&logo=python)
 ![Walrus](https://img.shields.io/badge/Walrus-Enabled-purple?style=for-the-badge)
@@ -10,7 +12,9 @@
 
 **An autonomous file organization agent with encrypted vault storage, content-aware automation workflows, and on-chain integrity anchoring — powered by Walrus decentralized storage and the Sui blockchain.**
 
-[Screenshots](#-screenshots) • [Features](#-features) • [Quick Start](#-quick-start) • [Architecture](#-architecture) • [Vault](#-vault--encrypted-walrus-storage) • [Workflows](#-workflows--automation-engine) • [Sui Anchor](#-sui-anchor--on-chain-integrity)
+**[Watch the 1-Minute Demo Video](https://youtu.be/6JnrVI59Hbc)**
+
+[Screenshots](#-screenshots) • [Features](#-features) • [Quick Start](#-quick-start) • [Architecture](#-architecture) • [Vault](#-vault--encrypted-walrus-storage) • [Workflows](#-workflows--automation-engine) • [Sui Anchor](#-sui-anchor--on-chain-integrity) • [Deployed Contract](#-deployed-on-sui-testnet)
 
 </div>
 
@@ -41,6 +45,16 @@
 ### 🖥️ Agent Processing Files in Real-Time
 <p align="center">
   <img src="img/in progress agent.png" alt="Agent processing" width="90%">
+</p>
+
+### 📊 Dashboard Main View
+<p align="center">
+  <img src="img/dashboard_main.png" alt="Dashboard Main" width="90%">
+</p>
+
+### 🔍 Blob Explorer – Browse Walrus Storage
+<p align="center">
+  <img src="img/blob_explorer.png" alt="Blob Explorer" width="90%">
 </p>
 
 ---
@@ -98,7 +112,8 @@
 |---------|-------------|
 | 🎮 **Control Panel** | Web UI to start/stop the agent, generate demo files, stream live console |
 | 📊 **8-View Dashboard** | Control, Dashboard, Blob Explorer, History, Live Feed, Vault, Workflows, Sui Anchor |
-| 🐳 **Docker Full-Stack** | One container runs both the agent and dashboard — fully portable |
+| � **Folder Organizer UI** | Browse filesystem, preview files, customize categories, choose rename patterns, run organization |
+| �🐳 **Docker Full-Stack** | One container runs both the agent and dashboard — fully portable |
 | ⚙️ **Configurable** | JSON-based settings for all parameters |
 | 🖥️ **Windows Service Ready** | Can run as scheduled task or service |
 
@@ -262,9 +277,9 @@ Edit `config.json` to customize the agent:
     "sui_anchor": {
         "enabled": true,
         "rpc_url": "https://fullnode.testnet.sui.io:443",
-        "package_id": "",
-        "registry_id": "",
-        "signer_address": ""
+        "package_id": "0x9347b087370be9ddda2caad8dfcef4db4500a62c3505691925b5890f9830ee9a",
+        "registry_id": "0x95f511bb8ae5b2831c381bcb1aa849ab84f99e839a6a6b88c2e62830f408ea1d",
+        "signer_address": "0xf64afb55d7f67645d7542ab066a43b17f309c53c4d083dab1af7629b5007f413"
     }
 }
 ```
@@ -281,7 +296,7 @@ Edit `config.json` to customize the agent:
 | `vault.enabled` | Enable encrypted vault storage | `true` |
 | `vault.epochs` | Walrus storage epochs for vault files | `10` |
 | `workflows.enabled` | Enable OCR-based automation rules | `true` |
-| `sui_anchor.package_id` | Deployed Move contract package ID (leave empty for local ledger) | `""` |
+| `sui_anchor.package_id` | Deployed Move contract package ID | `0x9347b...ee9a` |
 
 ---
 
@@ -357,6 +372,7 @@ Deepurge includes a **modern dark-themed web dashboard** with a built-in **Contr
 | 🔐 **Vault** | Upload/download encrypted files, folder sync, shareable link generator |
 | ⚙️ **Workflows** | Manage IF→THEN automation rules, view execution log, conversion tools |
 | ⚓ **Sui Anchor** | View anchored hashes, verify integrity, browse anchor history |
+| 📂 **Organize** | Browse filesystem, preview files by category, customize categories/naming, run full organization |
 
 ### Quick Start (no Docker)
 
@@ -510,7 +526,7 @@ When no Move contract is deployed (i.e. `package_id` is empty), anchors are stor
 
 ## 🎬 Demo Video
 
-> 🎥 Video demonstration coming soon! In the meantime, check out the [Screenshots](#-screenshots) above.
+> 🎥 **[Watch the 1-Minute Demo Video on YouTube](https://youtu.be/6JnrVI59Hbc)**
 
 ### Generate Demo Files
 
@@ -588,7 +604,8 @@ deepurge-autoclean-agent/
 ├── 📄 dashboard.bat         # Dashboard launcher (local)
 ├── 📄 Dockerfile.dashboard  # Full-stack Docker image (agent + dashboard)
 ├── 📄 docker-compose.yml    # Docker Compose – mounts real Downloads folder
-├── 📁 contracts/            # Sui Move smart contract
+
+├── 📁 contracts/            # Sui Move smart contract (deployed to testnet)
 │   └── 📁 deepurge_anchor/
 │       ├── 📄 Move.toml
 │       └── 📁 sources/
@@ -694,3 +711,17 @@ This project demonstrates deep integration with:
 **🦭 Powered by Walrus Decentralized Storage on Sui**
 
 </div>
+
+---
+
+## 🔗 Deployed on Sui Testnet
+
+The Move smart contract is **live on Sui Testnet** with active on-chain anchor transactions:
+
+| Resource | Address |
+|----------|--------|
+| **Package** | [`0x9347b087370be9ddda2caad8dfcef4db4500a62c3505691925b5890f9830ee9a`](https://suiscan.xyz/testnet/object/0x9347b087370be9ddda2caad8dfcef4db4500a62c3505691925b5890f9830ee9a) |
+| **Registry** | [`0x95f511bb8ae5b2831c381bcb1aa849ab84f99e839a6a6b88c2e62830f408ea1d`](https://suiscan.xyz/testnet/object/0x95f511bb8ae5b2831c381bcb1aa849ab84f99e839a6a6b88c2e62830f408ea1d) |
+| **Publisher** | [`0xf64afb55d7f67645d7542ab066a43b17f309c53c4d083dab1af7629b5007f413`](https://suiscan.xyz/testnet/account/0xf64afb55d7f67645d7542ab066a43b17f309c53c4d083dab1af7629b5007f413) |
+
+The agent computes a SHA-256 root hash of all daily file actions and anchors it on-chain via the `anchor_report` function — creating a **tamper-proof audit trail** that anyone can verify.

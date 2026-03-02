@@ -26,6 +26,9 @@
         <a href="#" class="nav-item active" data-view="control">
             <span class="nav-icon">🎮</span> Control Panel
         </a>
+        <a href="#" class="nav-item" data-view="organize">
+            <span class="nav-icon">📂</span> Organize
+        </a>
         <a href="#" class="nav-item" data-view="dashboard">
             <span class="nav-icon">📊</span> Dashboard
         </a>
@@ -112,6 +115,176 @@
                 <div class="console-line sys">[SYS] Dashboard ready. Start the agent to begin.</div>
             </div>
         </div>
+    </section>
+
+    <!-- ═══════════ VIEW: Organize ═══════════ -->
+    <section class="view" id="view-organize">
+
+        <!-- Step 1: Select Source Folder -->
+        <div class="panel full-width organize-panel">
+            <h3 class="panel-title">📂 Step 1 — Select Folder to Organize</h3>
+            <p class="panel-desc">
+                Browse your system and pick the exact folder you want Deepurge to organize.
+                All files inside will be classified and sorted into categories.
+            </p>
+
+            <div class="folder-browser-container">
+                <!-- Breadcrumb -->
+                <div class="folder-breadcrumb" id="folderBreadcrumb">
+                    <span class="breadcrumb-item" data-path="" onclick="browseTo('')">💻 My Computer</span>
+                </div>
+
+                <!-- Folder list -->
+                <div class="folder-list" id="folderList">
+                    <div class="folder-list-loading">Loading drives…</div>
+                </div>
+
+                <!-- Selected folder indicator -->
+                <div class="folder-selected-bar" id="folderSelectedBar">
+                    <span class="folder-selected-icon">📁</span>
+                    <div class="folder-selected-info">
+                        <span class="folder-selected-label">Selected Folder:</span>
+                        <span class="folder-selected-path" id="selectedFolderPath">None selected</span>
+                    </div>
+                    <button class="btn btn-sm btn-primary" id="btnSelectFolder">✅ Use This Folder</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Folder Preview (shows after selection) -->
+        <div class="panel full-width hidden" id="folderPreviewPanel">
+            <h3 class="panel-title">🔍 Folder Preview</h3>
+            <p class="panel-desc" id="previewDesc">Scanning folder contents…</p>
+            <div class="stat-grid small" id="previewStats"></div>
+        </div>
+
+        <!-- Step 2: Destination Folder -->
+        <div class="panel full-width hidden" id="destPanel">
+            <h3 class="panel-title">📦 Step 2 — Choose Destination</h3>
+            <p class="panel-desc">
+                Where should the organized files go? By default, a subfolder named <strong>Organized</strong> will be created inside your source folder.
+            </p>
+            <div class="dest-folder-row">
+                <input type="text" class="input" id="destFolderInput" placeholder="Leave empty for auto (source/Organized)" />
+                <button class="btn btn-sm btn-outline" id="btnBrowseDest">📂 Browse</button>
+            </div>
+            <!-- Dest browser (hidden by default) -->
+            <div class="folder-browser-container mini hidden" id="destBrowserContainer">
+                <div class="folder-breadcrumb" id="destBreadcrumb"></div>
+                <div class="folder-list" id="destFolderList"></div>
+                <div style="padding:8px;text-align:right;">
+                    <button class="btn btn-sm btn-primary" id="btnConfirmDest">✅ Select</button>
+                    <button class="btn btn-sm btn-outline" id="btnCancelDest">✕ Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 3: Organization Settings -->
+        <div class="panel full-width hidden" id="settingsPanel">
+            <h3 class="panel-title">⚙️ Step 3 — Organization Settings</h3>
+
+            <!-- Rename pattern -->
+            <div class="settings-section">
+                <h4 class="settings-subtitle">📝 File Naming Convention</h4>
+                <p class="panel-desc">Choose how files should be renamed when organized.</p>
+                <div class="rename-options" id="renameOptions">
+                    <label class="rename-option active" data-pattern="YYYYMMDD_HHMMSS">
+                        <input type="radio" name="rename" value="YYYYMMDD_HHMMSS" checked />
+                        <span class="rename-preview">📄 20260301_143022_report.pdf</span>
+                        <span class="rename-name">Date + Time</span>
+                    </label>
+                    <label class="rename-option" data-pattern="YYYY-MM-DD">
+                        <input type="radio" name="rename" value="YYYY-MM-DD" />
+                        <span class="rename-preview">📄 2026-03-01_report.pdf</span>
+                        <span class="rename-name">Date Only</span>
+                    </label>
+                    <label class="rename-option" data-pattern="category_date">
+                        <input type="radio" name="rename" value="category_date" />
+                        <span class="rename-preview">📄 Documents_20260301_report.pdf</span>
+                        <span class="rename-name">Category + Date</span>
+                    </label>
+                    <label class="rename-option" data-pattern="original">
+                        <input type="radio" name="rename" value="original" />
+                        <span class="rename-preview">📄 report.pdf</span>
+                        <span class="rename-name">Keep Original</span>
+                    </label>
+                    <label class="rename-option" data-pattern="smart">
+                        <input type="radio" name="rename" value="smart" />
+                        <span class="rename-preview">📄 Financial_Invoice_report.pdf</span>
+                        <span class="rename-name">Smart AI Name</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Categories editor -->
+            <div class="settings-section">
+                <h4 class="settings-subtitle">🏷️ Categories & Extensions</h4>
+                <p class="panel-desc">
+                    Customize which file extensions go into which category folders.
+                    Click a category to edit its extensions.
+                </p>
+                <div class="categories-editor" id="categoriesEditor"></div>
+                <div class="categories-add-row">
+                    <input type="text" class="input input-sm" id="newCategoryName" placeholder="New category name" />
+                    <input type="text" class="input" id="newCategoryExts" placeholder="Extensions (comma-sep): .psd, .ai, .sketch" />
+                    <button class="btn btn-sm btn-outline" id="btnAddCategory">➕ Add Category</button>
+                </div>
+            </div>
+
+            <!-- Walrus logging toggle -->
+            <div class="settings-section">
+                <h4 class="settings-subtitle">🦭 Walrus Blockchain Logging</h4>
+                <p class="panel-desc">
+                    Log every organize action immutably to the Walrus decentralized storage network on Sui.
+                    Creates a permanent, verifiable record of all file movements.
+                </p>
+                <div class="walrus-toggle-row">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="walrusToggle" checked />
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="toggle-label">Upload organize log to Walrus Testnet</span>
+                    <span class="walrus-badge-sm">🦭 Powered by Sui</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 4: Execute -->
+        <div class="panel full-width hidden" id="executePanel">
+            <h3 class="panel-title">🚀 Step 4 — Execute Organization</h3>
+            <div class="execute-summary" id="executeSummary"></div>
+            <div class="execute-actions">
+                <button class="btn btn-primary" id="btnPreviewOrganize">👁️ Preview (Dry Run)</button>
+                <button class="btn btn-success" id="btnExecuteOrganize">🚀 Organize Now</button>
+            </div>
+
+            <!-- Results -->
+            <div class="organize-results hidden" id="organizeResults">
+                <h4 class="results-title" id="resultsTitle">Results</h4>
+                <div class="stat-grid small" id="resultsStats"></div>
+                <div class="walrus-result hidden" id="walrusResult">
+                    <span class="walrus-result-icon">🦭</span>
+                    <span>Logged to Walrus — Blob ID: <code class="mono" id="walrusBlobResult"></code></span>
+                    <button class="btn btn-sm btn-explore" id="btnExploreWalrusResult">Explore →</button>
+                </div>
+                <div class="table-wrap" id="resultsTableWrap">
+                    <table class="data-table" id="resultsTable">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>File</th>
+                                <th>Category</th>
+                                <th>Size</th>
+                                <th>New Name</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
     </section>
 
     <!-- ═══════════ VIEW: Dashboard ═══════════ -->

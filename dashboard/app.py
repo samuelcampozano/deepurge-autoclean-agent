@@ -8,6 +8,7 @@ Project: x OpenClaw Agent Hackathon
 import os
 import sys
 import json
+import shutil
 import sqlite3
 import signal
 import subprocess
@@ -605,6 +606,419 @@ def anchors_verify():
 # figure — studies on desktop file management (Bergman et al., 2010) show users
 # spend 1-2 minutes per file when they also have to decide where to put it.
 AVG_SECONDS_PER_FILE_MANUAL = 30
+
+
+# ──────────────────────────── Folder Browser API ───────────────
+
+@app.route("/api/browse")
+def browse_folder():
+    """Browse folder contents on the host system. Returns dirs and files."""
+    folder = request.args.get("path", "")
+    show_files = request.args.get("files", "false").lower() == "true"
+
+    # Default: list drive roots on Windows, or the configured watch folder on Unix/Docker
+    if not folder:
+        if os.name == "nt":
+            import string
+            drives = []
+            for letter in string.ascii_uppercase:
+                dp = f"{letter}:\\"
+                if os.path.exists(dp):
+                    drives.append({"name": f"{letter}:\\", "path": dp, "type": "drive"})
+            return jsonify({"path": "", "parent": "", "items": drives})
+        else:
+            # In Docker, default to watch folder from config so users see real files
+            folder = _get_watch_folder()
+
+    folder_path = Path(folder)
+    if not folder_path.exists() or not folder_path.is_dir():
+        return jsonify({"error": "Folder does not exist", "path": folder}), 400
+
+    items = []
+    try:
+        for entry in sorted(folder_path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
+            try:
+                if entry.name.startswith(".") or entry.name.startswith("$"):
+                    continue
+                if entry.is_dir():
+                    items.append({
+                        "name": entry.name,
+                        "path": str(entry),
+                        "type": "folder",
+                    })
+                elif show_files and entry.is_file():
+                    try:
+                        size = entry.stat().st_size
+                    except OSError:
+                        size = 0
+                    items.append({
+                        "name": entry.name,
+                        "path": str(entry),
+                        "type": "file",
+                        "size": size,
+                        "ext": entry.suffix.lower(),
+                    })
+            except PermissionError:
+                continue
+    except PermissionError:
+        return jsonify({"error": "Permission denied", "path": folder}), 403
+
+    parent = str(folder_path.parent) if folder_path.parent != folder_path else ""
+    return jsonify({
+        "path": str(folder_path),
+        "parent": parent,
+        "items": items,
+    })
+
+
+@app.route("/api/browse/preview")
+def browse_preview():
+    """Preview contents of a folder — count files by category."""
+    folder = request.args.get("path", "")
+    if not folder or not Path(folder).is_dir():
+        return jsonify({"error": "Invalid folder"}), 400
+
+    from classifier import FileClassifier
+    classifier = FileClassifier(str(CONFIG_PATH))
+
+    folder_path = Path(folder)
+    categories = {}
+    total_files = 0
+    total_size = 0
+
+    try:
+        for entry in folder_path.iterdir():
+            if entry.is_file() and not entry.name.startswith("."):
+                cat = classifier.classify(entry)
+                categories[cat] = categories.get(cat, 0) + 1
+                total_files += 1
+                try:
+                    total_size += entry.stat().st_size
+                except OSError:
+                    pass
+    except PermissionError:
+        return jsonify({"error": "Permission denied"}), 403
+
+    return jsonify({
+        "path": str(folder_path),
+        "total_files": total_files,
+        "total_size": total_size,
+        "categories": categories,
+    })
+
+
+# ──────────────────────────── Config API ───────────────────────
+
+@app.route("/api/config")
+def get_config():
+    """Return current configuration."""
+    cfg = _load_config()
+    return jsonify(cfg)
+
+
+@app.route("/api/config/update", methods=["POST"])
+def update_config():
+    """Update configuration fields. Merges provided fields into config.json."""
+    new_values = request.get_json(silent=True) or {}
+    if not new_values:
+        return jsonify({"error": "No values provided"}), 400
+
+    cfg = _load_config()
+
+    # Deep merge
+    for key, value in new_values.items():
+        if isinstance(value, dict) and key in cfg and isinstance(cfg[key], dict):
+            cfg[key].update(value)
+        else:
+            cfg[key] = value
+
+    try:
+        with open(CONFIG_PATH, "w") as f:
+            json.dump(cfg, f, indent=4)
+        return jsonify({"status": "updated", "config": cfg})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/config/categories", methods=["POST"])
+def update_categories():
+    """Update file categories and their extensions."""
+    data = request.get_json(silent=True) or {}
+    categories = data.get("categories")
+    if not categories or not isinstance(categories, dict):
+        return jsonify({"error": "categories dict required"}), 400
+
+    cfg = _load_config()
+    cfg["categories"] = categories
+
+    try:
+        with open(CONFIG_PATH, "w") as f:
+            json.dump(cfg, f, indent=4)
+        return jsonify({"status": "updated", "categories": categories})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/config/rename-patterns")
+def rename_patterns():
+    """Return available rename pattern presets."""
+    return jsonify({"patterns": [
+        {"id": "YYYYMMDD_HHMMSS", "label": "Date + Time", "example": "20260301_143022_report.pdf"},
+        {"id": "YYYY-MM-DD", "label": "Date Only", "example": "2026-03-01_report.pdf"},
+        {"id": "category_date", "label": "Category + Date", "example": "Documents_20260301_report.pdf"},
+        {"id": "original", "label": "Keep Original Name", "example": "report.pdf"},
+        {"id": "smart", "label": "Smart AI Name", "example": "Financial_Invoice_report.pdf"},
+    ]})
+
+
+# ──────────────────────────── Organize API ─────────────────────
+
+@app.route("/api/organize/config")
+def organize_config():
+    """Return the configured watch and organized folder paths."""
+    cfg = _load_config()
+    folders = cfg.get("folders", {})
+    watch = folders.get("watch_folder", "")
+    organized = folders.get("organized_folder", "")
+    # Expand ~ for local usage
+    if watch:
+        watch = str(Path(watch).expanduser())
+    if organized:
+        organized = str(Path(organized).expanduser())
+    return jsonify({"watch_folder": watch, "organized_folder": organized})
+
+
+@app.route("/api/organize/run", methods=["POST"])
+def organize_run():
+    """
+    Organize files in a specific folder.
+    Accepts: { folder, destination, rename_pattern, categories, log_to_walrus }
+    """
+    data = request.get_json(silent=True) or {}
+    source_folder = data.get("folder", "")
+    dest_folder = data.get("destination", "")
+    rename_pattern = data.get("rename_pattern", "YYYYMMDD_HHMMSS")
+    custom_categories = data.get("categories")
+    log_to_walrus = data.get("log_to_walrus", True)
+    dry_run = data.get("dry_run", False)
+
+    if not source_folder or not Path(source_folder).is_dir():
+        return jsonify({"error": "Invalid source folder"}), 400
+
+    if not dest_folder:
+        dest_folder = str(Path(source_folder) / "Organized")
+
+    dest_path = Path(dest_folder)
+    source_path = Path(source_folder)
+
+    # Use custom categories or defaults from config
+    from classifier import FileClassifier, format_file_size
+    classifier = FileClassifier(str(CONFIG_PATH))
+    if custom_categories and isinstance(custom_categories, dict):
+        classifier.categories = custom_categories
+        classifier._build_extension_map()
+
+    results = {
+        "source": str(source_path),
+        "destination": str(dest_path),
+        "files_processed": 0,
+        "files_moved": 0,
+        "files_skipped": 0,
+        "errors": 0,
+        "actions": [],
+        "categories_summary": {},
+        "total_size": 0,
+        "walrus_blob_id": None,
+    }
+
+    # Collect files
+    files = [f for f in source_path.iterdir()
+             if f.is_file() and not f.name.startswith(".")
+             and not any(p in f.name.lower() for p in [".tmp", ".crdownload", ".partial", "~$"])]
+
+    if dry_run:
+        # Preview mode — don't move anything
+        for f in files:
+            cat = classifier.classify(f)
+            try:
+                size = f.stat().st_size
+            except OSError:
+                size = 0
+            results["actions"].append({
+                "file": f.name,
+                "category": cat,
+                "size": size,
+                "destination": str(dest_path / cat / f.name),
+                "action": "would_move",
+            })
+            results["files_processed"] += 1
+            results["total_size"] += size
+            results["categories_summary"][cat] = results["categories_summary"].get(cat, 0) + 1
+        return jsonify(results)
+
+    # Actual organize
+    walrus_actions = []
+    for f in files:
+        try:
+            cat = classifier.classify(f)
+            try:
+                size = f.stat().st_size
+            except OSError:
+                size = 0
+
+            cat_folder = dest_path / cat
+            cat_folder.mkdir(parents=True, exist_ok=True)
+
+            # Generate new filename
+            now = datetime.now()
+            if rename_pattern == "original":
+                new_name = f.name
+            elif rename_pattern == "YYYY-MM-DD":
+                new_name = f"{now.strftime('%Y-%m-%d')}_{f.name}"
+            elif rename_pattern == "category_date":
+                new_name = f"{cat}_{now.strftime('%Y%m%d')}_{f.name}"
+            elif rename_pattern == "smart":
+                new_name = f"{cat}_{now.strftime('%Y%m%d_%H%M%S')}_{f.name}"
+            else:  # YYYYMMDD_HHMMSS
+                new_name = f"{now.strftime('%Y%m%d_%H%M%S')}_{f.name}"
+
+            new_path = cat_folder / new_name
+            counter = 1
+            while new_path.exists():
+                stem = Path(new_name).stem
+                suffix = f.suffix
+                new_path = cat_folder / f"{stem}_{counter}{suffix}"
+                counter += 1
+
+            shutil.move(str(f), str(new_path))
+
+            action = {
+                "file": f.name,
+                "new_name": new_path.name,
+                "category": cat,
+                "size": size,
+                "destination": str(new_path),
+                "action": "moved",
+                "timestamp": now.isoformat() + "Z",
+            }
+            results["actions"].append(action)
+            walrus_actions.append(action)
+            results["files_moved"] += 1
+            results["total_size"] += size
+            results["categories_summary"][cat] = results["categories_summary"].get(cat, 0) + 1
+
+            # Log to DB
+            try:
+                conn = sqlite3.connect(str(DB_PATH))
+                cur = conn.cursor()
+                cur.execute("""
+                    INSERT INTO actions (timestamp, action_type, original_path, new_path,
+                                        file_name, category, file_size, status)
+                    VALUES (?, 'MOVED', ?, ?, ?, ?, ?, 'completed')
+                """, (now.isoformat(), str(f), str(new_path), f.name, cat, size))
+
+                # Update statistics
+                cur.execute("SELECT id FROM statistics WHERE id=1")
+                if cur.fetchone():
+                    cur.execute("""
+                        UPDATE statistics SET
+                            total_files_processed = total_files_processed + 1,
+                            total_bytes_processed = total_bytes_processed + ?,
+                            last_updated = ?
+                        WHERE id = 1
+                    """, (size, now.isoformat()))
+                else:
+                    cur.execute("""
+                        INSERT INTO statistics (id, total_files_processed, total_bytes_processed, last_updated)
+                        VALUES (1, 1, ?, ?)
+                    """, (size, now.isoformat()))
+                conn.commit()
+                conn.close()
+            except Exception:
+                pass
+
+        except Exception as e:
+            results["actions"].append({
+                "file": f.name,
+                "error": str(e),
+                "action": "error",
+            })
+            results["errors"] += 1
+
+        results["files_processed"] += 1
+
+    # Upload organize log to Walrus
+    if log_to_walrus and walrus_actions:
+        try:
+            walrus_cfg = _load_config().get("walrus", {})
+            publisher_url = walrus_cfg.get("publisher_url", "https://publisher.walrus-testnet.walrus.space")
+            epochs = walrus_cfg.get("epochs", 5)
+
+            batch_data = {
+                "batch_type": "organize_log",
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "source_folder": str(source_path),
+                "destination_folder": str(dest_path),
+                "action_count": len(walrus_actions),
+                "rename_pattern": rename_pattern,
+                "actions": walrus_actions,
+                "agent": "Deepurge-AutoClean-Agent-v1.0",
+                "author": "Samuel Campozano Lopez",
+            }
+
+            url = f"{publisher_url}/v1/blobs?epochs={epochs}"
+            json_data = json.dumps(batch_data, indent=2)
+            resp = http_requests.put(
+                url,
+                data=json_data.encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                timeout=60,
+            )
+            if resp.status_code == 200:
+                resp_json = resp.json()
+                blob_id = None
+                if "newlyCreated" in resp_json:
+                    blob_id = resp_json["newlyCreated"].get("blobObject", {}).get("blobId")
+                elif "alreadyCertified" in resp_json:
+                    blob_id = resp_json["alreadyCertified"].get("blobId")
+                results["walrus_blob_id"] = blob_id
+
+                if blob_id:
+                    # Save to blob history
+                    try:
+                        history = {"blobs": []}
+                        if BLOB_HISTORY_PATH.exists():
+                            with open(BLOB_HISTORY_PATH, "r") as hf:
+                                history = json.load(hf)
+                        history["blobs"].append({
+                            "blob_id": blob_id,
+                            "url": f"https://aggregator.walrus-testnet.walrus.space/v1/blobs/{blob_id}",
+                            "content_type": "organize_log",
+                            "action_count": len(walrus_actions),
+                            "timestamp": datetime.utcnow().isoformat() + "Z",
+                        })
+                        with open(BLOB_HISTORY_PATH, "w") as hf:
+                            json.dump(history, hf, indent=2)
+                    except Exception:
+                        pass
+
+                    # Log to walrus_uploads table
+                    try:
+                        conn = sqlite3.connect(str(DB_PATH))
+                        cur = conn.cursor()
+                        cur.execute("""
+                            INSERT INTO walrus_uploads (timestamp, blob_id, content_type, action_count, data_summary, status)
+                            VALUES (?, ?, 'organize_log', ?, ?, 'success')
+                        """, (datetime.utcnow().isoformat(), blob_id, len(walrus_actions),
+                              json.dumps(results["categories_summary"])))
+                        conn.commit()
+                        conn.close()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    return jsonify(results)
 
 @app.route("/api/insights")
 def insights():

@@ -18,8 +18,10 @@ RUN pip install --no-cache-dir \
 
 # Copy the entire project
 COPY agent.py classifier.py database.py walrus_logger.py \
+     intelligence.py workflows.py vault.py sui_anchor.py \
      demo_generator.py config.json config.docker.json ./
 COPY dashboard/ ./dashboard/
+COPY contracts/ ./contracts/
 
 # Use the docker-specific config (paths: /data/Downloads, /data/Organized)
 RUN cp config.docker.json config.json

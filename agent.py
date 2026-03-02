@@ -346,7 +346,7 @@ class DeepurgeAgent(FileSystemEventHandler):
                     return None
                 
                 # Generate destination path and smart name
-                intel = analysis.get("intelligence", {})
+                intel = analysis.get("intelligence") or {}
                 smart_name = DeepIntelligence.get_smart_name(file_path, intel)
                 new_filename = self._generate_new_filename(Path(smart_name + file_path.suffix))
                 
